@@ -26,10 +26,10 @@ z.object(ConfigSchema.shape).parse(CONFIG);
 const testConfig = {
 	DID: 'did:plc:7iza6de2dwap2sbkpav7c6c6',
 	SIGNING_KEY: 'did:key:zQ3shokFTS3brHcDQrn82RUDfCZESWL1ZdCEJwekUDPQiYBme',
-	JETSTREAM_URL: 'wss://jetstream.atproto.tools/subscribe',
+	JETSTREAM_URL: 'wss://jetstream1.us-west.bsky.network/subscribe',
 	COLLECTION: 'app.bsky.feed.like',
 	CURSOR_INTERVAL: 100000,
-	BSKY_HANDLE: 'battlemaster.netwatch.dev',
+	BSKY_HANDLE: 'aeon.netwatch.dev',
 	BSKY_PASSWORD: 'this-is-a-very-secure-password',
 };
 
