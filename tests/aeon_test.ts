@@ -1,7 +1,10 @@
+import { z } from 'zod';
 import { assertEquals, assertRejects } from '@std/assert';
 import { assertSpyCall, spy } from '@std/testing/mock';
 import { LABELS } from '../src/labels.ts';
 import { CATEGORY_PREFIXES, Category } from '../src/schemas.ts';
+
+const CategorySchema = z.nativeEnum(CATEGORY_PREFIXES);
 
 class MockAeon {
     private labelerServer: any;
@@ -46,7 +49,7 @@ class MockAeon {
         await this.addOrUpdateLabel(subject, rkey, currentLabels);
     }
 
-    private fetchCurrentLabels(did: string): Record<Category, Set<string>> {
+    private fetchCurrentLabels(_did: string): Record<Category, Set<string>> {
         const labelCategories: Record<Category, Set<string>> = {
             adlr: new Set(['adlr']),
             arar: new Set(),
@@ -84,13 +87,13 @@ class MockAeon {
         return LABELS.find((label) => label.rkey === rkey);
     }
 
-    private async getCategoryFromLabel(label: string): Promise<Category> {
+    private getCategoryFromLabel(label: string): Category {
         if (label.length !== 4) {
-            throw new Error(`Invalid label length: ${label}`);
+          throw new Error(`Invalid label length: ${label}`);
         }
-        const category = label.toLowerCase() as Category;
-        if (Object.keys(CATEGORY_PREFIXES).includes(category)) {
-            return category;
+        const lowercaseLabel = label.toLowerCase();
+        if (CategorySchema.safeParse(lowercaseLabel).success) {
+          return lowercaseLabel as Category;
         }
         throw new Error(`Invalid label: ${label}`);
     }
