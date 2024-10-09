@@ -62,7 +62,7 @@ export const ConfigSchema = z.object({
 	DID: DidSchema,
 	SIGNING_KEY: SigningKeySchema,
 	JETSTREAM_URL: z.string().url().default(
-		'wss://jetstream.atproto.tools/subscribe',
+		'wss://jetstream1.us-west.bsky.network/subscribe',
 	),
 	COLLECTION: z.string().min(1).default('app.bsky.feed.like'),
 	CURSOR_INTERVAL: z.number().int().positive().default(100000),
