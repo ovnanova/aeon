@@ -33,7 +33,7 @@ export class Aeon {
 		console.log('ÆON initialized');
 	}
 
-	async label(subject: string, rkey: string): Promise<void> {
+	async assignLabel(subject: string, rkey: string): Promise<void> {
 		const validatedSubject = DidSchema.parse(subject);
 		const validatedRkey = RkeySchema.parse(rkey);
 		console.log(

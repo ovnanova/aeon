@@ -39,7 +39,7 @@ class MockAeon {
 		console.log('ÆON initialized');
 	}
 
-	async label(subject: string, rkey: string): Promise<void> {
+	async assignLabel(subject: string, rkey: string): Promise<void> {
 		if (rkey === 'self') {
 			console.log(`Self-labeling detected for ${subject}. No action taken.`);
 			return;
@@ -109,7 +109,7 @@ Deno.test('ÆON', async (t) => {
 	await t.step('label - self labeling', async () => {
 		const aeon = new MockAeon();
 		const consoleSpy = spy(console, 'log');
-		await aeon.label('did:plc:7iza6de2dwap2sbkpav7c6c6', 'self');
+		await aeon.assignLabel('did:plc:7iza6de2dwap2sbkpav7c6c6', 'self');
 		assertSpyCall(consoleSpy, 0, {
 			args: [
 				'Self-labeling detected for did:plc:7iza6de2dwap2sbkpav7c6c6. No action taken.',
@@ -120,7 +120,7 @@ Deno.test('ÆON', async (t) => {
 
 	await t.step('label - successful labeling', async () => {
 		const aeon = new MockAeon();
-		await aeon.label('did:plc:7iza6de2dwap2sbkpav7c6c6', '3jzfcijpj2z2a');
+		await aeon.assignLabel('did:plc:7iza6de2dwap2sbkpav7c6c6', '3jzfcijpj2z2a');
 		assertSpyCall(aeon['labelerServer'].createLabel, 0);
 	});
 

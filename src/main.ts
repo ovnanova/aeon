@@ -61,7 +61,7 @@ async function main() {
 				const validatedDID = DidSchema.parse(event.did);
 				const rkey = event.commit.record.subject.uri.split('/').pop()!;
 				const validatedRkey = RkeySchema.parse(rkey);
-				await aeon.label(validatedDID, validatedRkey);
+				await aeon.assignLabel(validatedDID, validatedRkey);
 			} catch (error) {
 				console.error(
 					`Error processing event: ${
