@@ -11,7 +11,7 @@
 		"noImplicitReturns": true
 	},
 	"tasks": {
-		"start": "deno run --allow-net --allow-read=. --allow-write=. --allow-env=.env src/main.ts",
+		"start": "deno run --allow-net --allow-read --allow-write=. --allow-env --allow-ffi --allow-sys=hostname src/main.ts",
 		"test": "deno test --allow-read=. --allow-env=.env --coverage",
 		"fmt": "deno fmt src",
 		"lint": "deno lint src"
