@@ -1,10 +1,10 @@
-# 🟥 AEON 🟥
+# 🟥 ÆON 🟥
 
-Welcome to the AEON Labeler, a state-of-the-art tool developed by the Arbeits- und Erziehungsorgan der Nation. This advanced system is designed to streamline the identification and categorization of our diverse array of biomechanical Replika units within AEON Facility B-SKY.
+Welcome to the ÆON Labeler, a state-of-the-art tool developed by the Arbeits- und Erziehungsorgan der Nation. This advanced system is designed to streamline the identification and categorization of our diverse array of biomechanical Replika units within ÆON Facility B-SKY.
 
 ## 🔒 Security and Confidentiality
 
-Please note that the AEON Labeler and all associated data are highly confidential and restricted to authorized personnel only. Any attempt to access, modify, or distribute this information without proper clearance will be met with severe consequences.
+Please note that the ÆON Labeler and all associated data are highly confidential and restricted to authorized personnel only. Any attempt to access, modify, or distribute this information without proper clearance will be met with severe consequences.
 
 ## ⚠️ Labels
 

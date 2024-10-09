@@ -30,7 +30,7 @@ export class Aeon {
 			identifier: CONFIG.BSKY_HANDLE,
 			password: CONFIG.BSKY_PASSWORD,
 		});
-		console.log('AEON initialized');
+		console.log('ÆON initialized');
 	}
 
 	async label(subject: string, rkey: string): Promise<void> {
@@ -64,18 +64,19 @@ export class Aeon {
 	}
 
 	private fetchCurrentLabels(did: string): Record<Category, Set<string>> {
-		const categories: Category[] = ['adlr' , 'arar' , 'eulr' , 'fklr' , 'klbr' , 'lstr' , 'mnhr' , 'star' , 'stcr'];
-		const labelCategories: Record<Category, Set<string>> = {
-			adlr: new Set(),
-			arar: new Set(),
-			eulr: new Set(),
-			fklr: new Set(),
-			klbr: new Set(),
-			lstr: new Set(),
-			mnhr: new Set(),
-			star: new Set(),
-			stcr: new Set(),
+		const labelCategories = {
+			adlr: new Set<string>(),
+			arar: new Set<string>(),
+			eulr: new Set<string>(),
+			fklr: new Set<string>(),
+			klbr: new Set<string>(),
+			lstr: new Set<string>(),
+			mnhr: new Set<string>(),
+			star: new Set<string>(),
+			stcr: new Set<string>(),
 		};
+		type Category = keyof typeof labelCategories;
+		const categories = Object.keys(labelCategories) as Category[];
 
 		for (const category of categories) {
 			const prefix = CATEGORY_PREFIXES[category];

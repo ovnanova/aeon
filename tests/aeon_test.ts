@@ -33,7 +33,7 @@ class MockAeon {
             identifier: 'test-handle',
             password: 'test-password',
         });
-        console.log('AEON initialized');
+        console.log('ÆON initialized');
     }
 
     async label(subject: string, rkey: string): Promise<void> {
@@ -96,7 +96,7 @@ class MockAeon {
     }
 }
 
-Deno.test('AEON', async (t) => {
+Deno.test('ÆON', async (t) => {
     await t.step('init', async () => {
         const aeon = new MockAeon();
         await aeon.init();
