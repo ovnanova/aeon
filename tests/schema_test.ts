@@ -1,127 +1,131 @@
 import { assertEquals, assertThrows } from '@std/assert';
 import {
-	ConfigSchema,
-	DidSchema,
-	LabelSchema,
-	LabelValueDefinitionSchema,
-	LocaleSchema,
-	SigningKeySchema,
+  ConfigSchema,
+  DidSchema,
+  LabelSchema,
+  SigningKeySchema,
+  RkeySchema,
+  CategorySchema,
 } from '../src/schemas.ts';
 
-Deno.test('LocaleSchema validation', () => {
-	const validLocale = {
-		lang: 'en',
-		name: 'English',
-		description: 'English language',
-	};
-	assertEquals(LocaleSchema.parse(validLocale), validLocale);
+Deno.test('RkeySchema validation', () => {
+  assertEquals(RkeySchema.parse('3jzfcijpj2z2a'), '3jzfcijpj2z2a');
+  assertEquals(RkeySchema.parse('self'), 'self');
 
-	assertThrows(
-		() => LocaleSchema.parse({ ...validLocale, lang: 123 }),
-		Error,
-		'Expected string, received number',
-	);
+  assertThrows(
+    () => RkeySchema.parse('3jzfcijpj2z2aa'),
+    Error,
+    'Invalid',
+  );
+
+  assertThrows(
+    () => RkeySchema.parse('3jzfcijpj2z2A'),
+    Error,
+    'Invalid',
+  );
 });
 
 Deno.test('LabelSchema validation', () => {
-	const validLabel = {
-		rkey: '3jzfcijpj2z2a',
-		identifier: 'test-label',
-		locales: [
-			{ lang: 'en', name: 'Test Label', description: 'A test label' },
-		],
-	};
-	assertEquals(LabelSchema.parse(validLabel), validLabel);
+  const validLabel = {
+    rkey: '3jzfcijpj2z2a',
+    identifier: 'test-label',
+    category: 'adlr',
+  };
+  assertEquals(LabelSchema.parse(validLabel), validLabel);
 
-	assertThrows(
-		() => LabelSchema.parse({ ...validLabel, rkey: '3jzfcijpj2z2aa' }),
-		Error,
-		'String must contain exactly 13 character(s)',
-	);
+  assertThrows(
+    () => LabelSchema.parse({ ...validLabel, rkey: '3jzfcijpj2z2aa' }),
+    Error,
+    'Invalid',
+  );
 
-	assertThrows(
-		() => LabelSchema.parse({ ...validLabel, rkey: '3jzfcijpj2z2A' }),
-		Error,
-		'invalid_string',
-	);
-});
-
-Deno.test('LabelValueDefinitionSchema validation', () => {
-	const validLabelValueDefinition = {
-		identifier: 'test-label',
-		severity: 'inform',
-		blurs: 'none',
-		defaultSetting: 'warn',
-		adultOnly: false,
-		locales: [
-			{ lang: 'en', name: 'Test Label', description: 'A test label' },
-		],
-	};
-	assertEquals(
-		LabelValueDefinitionSchema.parse(validLabelValueDefinition),
-		validLabelValueDefinition,
-	);
-
-	assertThrows(
-		() =>
-			LabelValueDefinitionSchema.parse({
-				...validLabelValueDefinition,
-				severity: 'invalid',
-			}),
-		Error,
-		"Invalid enum value. Expected 'inform' | 'alert' | 'none', received 'invalid'",
-	);
+  assertThrows(
+    () => LabelSchema.parse({ ...validLabel, category: 'invalid' }),
+    Error,
+    'Invalid',
+  );
 });
 
 Deno.test('ConfigSchema validation', () => {
-	const validConfig = {
-		DID: 'did:plc:7iza6de2dwap2sbkpav7c6c6',
-		SIGNING_KEY: 'did:key:zQ3shokFTS3brHcDQrn82RUDfCZESWL1ZdCEJwekUDPQiYBme',
-		JETSTREAM_URL: 'wss://jetstream1.us-west.bsky.network/subscribe',
-		COLLECTION: 'app.bsky.feed.like',
-		CURSOR_INTERVAL: 100000,
-		BSKY_HANDLE: 'aeon.netwatch.dev',
-		BSKY_PASSWORD: 'this-is-a-very-secure-password',
-	};
-	assertEquals(ConfigSchema.parse(validConfig), validConfig);
+  const validConfig = {
+    DID: 'did:plc:7iza6de2dwap2sbkpav7c6c6',
+    SIGNING_KEY: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+    JETSTREAM_URL: 'wss://jetstream1.us-west.bsky.network/subscribe',
+    COLLECTION: 'app.bsky.feed.like',
+    CURSOR_INTERVAL: 100000,
+    BSKY_HANDLE: 'aeon.netwatch.dev',
+    BSKY_PASSWORD: 'this-is-a-very-secure-password',
+  };
+  assertEquals(ConfigSchema.parse(validConfig), validConfig);
 
-	const validConfigWithP256 = {
-		...validConfig,
-		SIGNING_KEY: 'did:key:zDnaerx9CtbPJ1q36T5Ln5wYt3MQYeGRG5ehnPAmxcf5mDZpv',
-	};
-	assertEquals(ConfigSchema.parse(validConfigWithP256), validConfigWithP256);
+  assertThrows(
+    () => ConfigSchema.parse({ ...validConfig, DID: 'invalid-did' }),
+    Error,
+    'Invalid input',
+  );
 
-	assertThrows(
-		() => ConfigSchema.parse({ ...validConfig, DID: 'invalid-did' }),
-		Error,
-		'invalid_string',
-	);
+  assertThrows(
+    () => ConfigSchema.parse({ ...validConfig, SIGNING_KEY: 'invalid-key' }),
+    Error,
+    'Invalid input',
+  );
 
-	assertThrows(
-		() => ConfigSchema.parse({ ...validConfig, SIGNING_KEY: 'invalid-key' }),
-		Error,
-		'invalid_string',
-	);
+  assertThrows(
+    () => ConfigSchema.parse({ ...validConfig, JETSTREAM_URL: 'not-a-url' }),
+    Error,
+    'Invalid url',
+  );
 
-	assertThrows(
-		() => ConfigSchema.parse({ ...validConfig, JETSTREAM_URL: 'not-a-url' }),
-		Error,
-		'Invalid url',
-	);
+  assertThrows(
+    () => ConfigSchema.parse({ ...validConfig, CURSOR_INTERVAL: -1 }),
+    Error,
+    'Number must be greater than 0',
+  );
 
-	assertThrows(
-		() => ConfigSchema.parse({ ...validConfig, CURSOR_INTERVAL: -1 }),
-		Error,
-		'Number must be greater than 0',
-	);
+  assertThrows(
+    () => ConfigSchema.parse({ ...validConfig, BSKY_HANDLE: '' }),
+    Error,
+    'String must contain at least 1 character(s)',
+  );
+});
 
-	assertThrows(
-		() => ConfigSchema.parse({ ...validConfig, BSKY_HANDLE: undefined }),
-		Error,
-		'Required',
-	);
+Deno.test('DidSchema validation', () => {
+  assertEquals(DidSchema.parse('did:plc:7iza6de2dwap2sbkpav7c6c6'), 'did:plc:7iza6de2dwap2sbkpav7c6c6');
 
-	assertEquals(ConfigSchema.shape.DID, DidSchema);
+  assertThrows(
+    () => DidSchema.parse('invalid-did'),
+    Error,
+    'Invalid input',
+  );
+});
 
-	assertEquals(ConfigSchema.shape.SIGNING_KEY, SigningKeySchema);
+Deno.test('SigningKeySchema validation', () => {
+  const validKey = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+  assertEquals(SigningKeySchema.parse(validKey), validKey);
+
+  assertThrows(
+    () => SigningKeySchema.parse('invalid-key'),
+    Error,
+    'Invalid input',
+  );
+
+  assertThrows(
+    () => SigningKeySchema.parse('0123456789abcdef'), // too short
+    Error,
+    'Invalid input',
+  );
+});
+
+Deno.test('CategorySchema validation', () => {
+  const validCategories = ['adlr', 'arar', 'eulr', 'fklr', 'klbr', 'lstr', 'mnhr', 'star', 'stcr', 'drmr'];
+
+  for (const category of validCategories) {
+    assertEquals(CategorySchema.parse(category), category);
+  }
+
+  assertThrows(
+    () => CategorySchema.parse('invalid'),
+    Error,
+    'Invalid input',
+  );
 });

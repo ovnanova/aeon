@@ -1,25 +1,55 @@
 import { z } from 'zod';
 import { ConfigSchema } from './schemas.ts';
-import { load } from '@std/dotenv';
 
-const env = await load();
+const kv = await Deno.openKv();
 
-const envConfig = {
-	DID: env['DID'] || Deno.env.get('DID'),
-	SIGNING_KEY: env['SIGNING_KEY'] || Deno.env.get('SIGNING_KEY'),
-	JETSTREAM_URL: env['JETSTREAM_URL'] || Deno.env.get('JETSTREAM_URL'),
-	COLLECTION: env['COLLECTION'] || Deno.env.get('COLLECTION'),
-	CURSOR_INTERVAL: env['CURSOR_INTERVAL']
-		? Number(env['CURSOR_INTERVAL'])
-		: Deno.env.get('CURSOR_INTERVAL')
-		? Number(Deno.env.get('CURSOR_INTERVAL'))
-		: undefined,
-	BSKY_HANDLE: env['BSKY_HANDLE'] || Deno.env.get('BSKY_HANDLE'),
-	BSKY_PASSWORD: env['BSKY_PASSWORD'] || Deno.env.get('BSKY_PASSWORD'),
-};
+async function getConfig(): Promise<z.infer<typeof ConfigSchema>> {
+	const config: Partial<z.infer<typeof ConfigSchema>> = {};
 
-export const CONFIG = ConfigSchema.parse(envConfig);
+	for (
+		const key of Object.keys(ConfigSchema.shape) as Array<
+			keyof z.infer<typeof ConfigSchema>
+		>
+	) {
+		const result = await kv.get(['config', key]);
+		if (result.value !== null) {
+			config[key] = result.value as z.infer<typeof ConfigSchema>[typeof key];
+		}
+	}
 
-z.object(ConfigSchema.shape).parse(CONFIG);
+	return ConfigSchema.parse(config);
+}
 
-Object.freeze(CONFIG);
+export const CONFIG = await getConfig();
+
+export async function setConfigValue(
+	key: keyof z.infer<typeof ConfigSchema>,
+	value: unknown,
+): Promise<void> {
+	const schema = ConfigSchema.shape[key] as z.ZodType<unknown>;
+	const validatedValue = schema.parse(value);
+	await kv.set(['config', key], validatedValue);
+}
+
+export async function initializeConfig(): Promise<void> {
+	const defaultConfig: z.infer<typeof ConfigSchema> = {
+		DID: 'did:plc:default',
+		SIGNING_KEY:
+			'0000000000000000000000000000000000000000000000000000000000000000',
+		JETSTREAM_URL: 'wss://jetstream1.us-west.bsky.network/subscribe',
+		COLLECTION: 'app.bsky.feed.like',
+		CURSOR_INTERVAL: 100000,
+		BSKY_HANDLE: 'default.handle',
+		BSKY_PASSWORD: 'default_password',
+	};
+
+	for (const [key, value] of Object.entries(defaultConfig)) {
+		const result = await kv.get(['config', key]);
+		if (result.value === null) {
+			await setConfigValue(key as keyof z.infer<typeof ConfigSchema>, value);
+		}
+	}
+}
+
+// Ensure the configuration is initialized
+await initializeConfig();

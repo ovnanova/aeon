@@ -28,5 +28,6 @@ This project is licensed under the MIT License.
 
 ## 🤝 Acknowledgments
 
-- The Bluesky team
+- Yuri & Barbara of [rose-engine](https://rose-engine.org/) for bringing SIGNALIS into our lives
 - [futur](https://bsky.app/profile/did:plc:uu5axsmbm2or2dngy4gwchec) for his excellent [Skyware libraries](https://skyware.js.org)
+- The Bluesky team

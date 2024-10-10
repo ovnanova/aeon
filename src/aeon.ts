@@ -3,8 +3,8 @@ import { LabelerServer } from 'labeler';
 import { CONFIG } from './config.ts';
 import { LABELS } from './labels.ts';
 import {
+	CATEGORIES,
 	Category,
-	CATEGORY_PREFIXES,
 	DidSchema,
 	Label,
 	RkeySchema,
@@ -26,11 +26,38 @@ export class Aeon {
 	}
 
 	async init(): Promise<void> {
-		await this.agent.login({
-			identifier: CONFIG.BSKY_HANDLE,
-			password: CONFIG.BSKY_PASSWORD,
-		});
-		console.log('ÆON initialized');
+		try {
+			const validatedDID = DidSchema.parse(CONFIG.DID);
+
+			const validatedSigningKey = SigningKeySchema.parse(CONFIG.SIGNING_KEY);
+
+			// Initialize LabelerServer
+			try {
+				this.labelerServer = new LabelerServer({
+					did: validatedDID,
+					signingKey: validatedSigningKey,
+				});
+				console.log('LabelerServer initialized successfully');
+			} catch (error) {
+				console.error('Error initializing LabelerServer:', error);
+				if (error instanceof Error) {
+					console.error('Error name:', error.name);
+					console.error('Error message:', error.message);
+					console.error('Error stack:', error.stack);
+				}
+				throw new Error('Failed to initialize LabelerServer');
+			}
+
+			// Login to ATP
+			await this.agent.login({
+				identifier: CONFIG.BSKY_HANDLE,
+				password: CONFIG.BSKY_PASSWORD,
+			});
+			console.log('ÆON initialized and logged in successfully');
+		} catch (error) {
+			console.error('Error in Aeon initialization:', error);
+			throw new Error('Failed to initialize ÆON');
+		}
 	}
 
 	async assignLabel(subject: string, rkey: string): Promise<void> {
@@ -74,17 +101,17 @@ export class Aeon {
 			mnhr: new Set<string>(),
 			star: new Set<string>(),
 			stcr: new Set<string>(),
+			drmr: new Set<string>(),
 		};
 		type Category = keyof typeof labelCategories;
 		const categories = Object.keys(labelCategories) as Category[];
 
 		for (const category of categories) {
-			const prefix = CATEGORY_PREFIXES[category];
 			const query = this.labelerServer.db
 				.prepare<unknown[], ComAtprotoLabelDefs.Label>(
 					`SELECT * FROM labels WHERE uri = ? AND val LIKE ? ORDER BY cts DESC`,
 				)
-				.all(did, `${prefix}-${category}-%`);
+				.all(did, `${category}-%`);
 
 			const labels = query.reduce(
 				(set: Set<string>, label: ComAtprotoLabelDefs.Label) => {
@@ -153,8 +180,8 @@ export class Aeon {
 	}
 
 	private getCategoryFromLabel(label: string): Category {
-		for (const [category, prefix] of Object.entries(CATEGORY_PREFIXES)) {
-			if (label.startsWith(`${prefix}-${category}-`)) {
+		for (const [category] of Object.entries(CATEGORIES)) {
+			if (label.startsWith(`${category}-`)) {
 				return category as Category;
 			}
 		}

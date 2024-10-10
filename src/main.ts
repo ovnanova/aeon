@@ -4,10 +4,12 @@ import { Aeon } from './aeon.ts';
 import { CONFIG } from './config.ts';
 import { DidSchema, RkeySchema } from './schemas.ts';
 
-const agent = new AtpAgent({ service: CONFIG.JETSTREAM_URL });
-const aeon = new Aeon();
+const kv = await Deno.openKv();
 
 async function main() {
+	const agent = new AtpAgent({ service: CONFIG.JETSTREAM_URL });
+	const aeon = new Aeon();
+
 	await agent.login({
 		identifier: CONFIG.BSKY_HANDLE,
 		password: CONFIG.BSKY_PASSWORD,
@@ -15,24 +17,20 @@ async function main() {
 	await aeon.init();
 
 	let cursor: number;
-	try {
-		cursor = Number(await Deno.readTextFile('./cursor.txt'));
+	const cursorResult = await kv.get(['cursor']);
+	if (cursorResult.value === null) {
+		cursor = Date.now() * 1000;
+		console.log(
+			`Cursor not found, setting to: ${cursor} (${
+				new Date(cursor / 1000).toISOString()
+			})`,
+		);
+		await kv.set(['cursor'], cursor);
+	} else {
+		cursor = cursorResult.value as number;
 		console.log(
 			`Cursor found: ${cursor} (${new Date(cursor / 1000).toISOString()})`,
 		);
-	} catch (error) {
-		if (error instanceof Deno.errors.NotFound) {
-			cursor = Date.now() * 1000;
-			console.log(
-				`Cursor not found, setting to: ${cursor} (${
-					new Date(cursor / 1000).toISOString()
-				})`,
-			);
-			await Deno.writeTextFile('./cursor.txt', cursor.toString());
-		} else {
-			console.error(error);
-			Deno.exit(1);
-		}
 	}
 
 	const jetstream = new Jetstream({
@@ -81,7 +79,7 @@ async function main() {
 					new Date(jetstream.cursor / 1000).toISOString()
 				})`,
 			);
-			await Deno.writeTextFile('./cursor.txt', jetstream.cursor.toString());
+			await kv.set(['cursor'], jetstream.cursor);
 		}
 	}, CONFIG.CURSOR_INTERVAL);
 

@@ -1,173 +1,85 @@
-import { z } from 'zod';
 import { assertEquals, assertRejects } from '@std/assert';
 import { assertSpyCall, spy } from '@std/testing/mock';
 import { LABELS } from '../src/labels.ts';
-import { Category, CATEGORY_PREFIXES } from '../src/schemas.ts';
+import { Category } from '../src/schemas.ts';
+import { Aeon } from '../src/aeon.ts';
 
-const CategorySchema = z.nativeEnum(CATEGORY_PREFIXES);
+// Mock Deno.openKv
+const mockKv = {
+  // deno-lint-ignore require-await
+  get: async (key: string[]) => {
+    if (key[0] === 'config') {
+      return { value: 'mock_value' };
+    }
+    return { value: null };
+  },
+  set: async () => {},
+};
 
-class MockAeon {
-	private labelerServer: any;
-	private agent: any;
+// @ts-ignore: Suppress 'Cannot assign to 'openKv' because it is a read-only property' error
+Deno.openKv = () => Promise.resolve(mockKv);
 
-	constructor() {
-		this.labelerServer = {
-			did: 'did:plc:7iza6de2dwap2sbkpav7c6c6',
-			createLabels: spy(() => Promise.resolve([])),
-			createLabel: spy(() => Promise.resolve({})),
-			db: {
-				prepare: () => ({
-					all: () => [
-						{ val: 'fklr', neg: false },
-						{ val: 'adlr', neg: false },
-						{ val: 'lstr', neg: false },
-						{ val: 'fklr', neg: true },
-					],
-				}),
-			},
-		};
-		this.agent = {
-			login: spy(() => Promise.resolve({})),
-		};
-	}
+Deno.test('Aeon', async (t) => {
+  await t.step('init', async () => {
+    const aeon = new Aeon();
+    await aeon.init();
+    assertSpyCall(aeon['agent'].login, 0);
+  });
 
-	async init(): Promise<void> {
-		await this.agent.login({
-			identifier: 'test-handle',
-			password: 'test-password',
-		});
-		console.log('ÆON initialized');
-	}
+  await t.step('label - self labeling', async () => {
+    const aeon = new Aeon();
+    const consoleSpy = spy(console, 'log');
+    await aeon.assignLabel('did:plc:7iza6de2dwap2sbkpav7c6c6', 'self');
+    assertSpyCall(consoleSpy, 0, {
+      args: [
+        'Self-labeling detected for did:plc:7iza6de2dwap2sbkpav7c6c6. No action taken.',
+      ],
+    });
+    consoleSpy.restore();
+  });
 
-	async assignLabel(subject: string, rkey: string): Promise<void> {
-		if (rkey === 'self') {
-			console.log(`Self-labeling detected for ${subject}. No action taken.`);
-			return;
-		}
+  await t.step('label - successful labeling', async () => {
+    const aeon = new Aeon();
+    await aeon.assignLabel('did:plc:7iza6de2dwap2sbkpav7c6c6', '3jzfcijpj2z2a');
+    assertSpyCall(aeon['labelerServer'].createLabel, 0);
+  });
 
-		const currentLabels = this.fetchCurrentLabels(subject);
-		await this.addOrUpdateLabel(subject, rkey, currentLabels);
-	}
+  await t.step('findLabelByPost', () => {
+    const aeon = new Aeon();
+    const result = aeon['findLabelByPost'](LABELS[0].rkey);
+    assertEquals(result, LABELS[0]);
+    const notFound = aeon['findLabelByPost']('3jzfcijpj222a');
+    assertEquals(notFound, undefined);
+  });
 
-	private fetchCurrentLabels(_did: string): Record<Category, Set<string>> {
-		const labelCategories: Record<Category, Set<string>> = {
-			adlr: new Set(['adlr']),
-			arar: new Set(),
-			eulr: new Set(),
-			fklr: new Set(['fklr']),
-			klbr: new Set(),
-			lstr: new Set(['lstr']),
-			mnhr: new Set(),
-			star: new Set(),
-			stcr: new Set(),
-		};
-		return labelCategories;
-	}
+  await t.step('getCategoryFromLabel', async () => {
+    const aeon = new Aeon();
+    const validCategories: Category[] = [
+      'adlr', 'arar', 'eulr', 'fklr', 'klbr', 'lstr', 'mnhr', 'star', 'stcr', 'drmr'
+    ];
+    for (const category of validCategories) {
+      const result = await aeon['getCategoryFromLabel'](category);
+      assertEquals(result, category);
+    }
+  });
 
-	private async addOrUpdateLabel(
-		subject: string,
-		rkey: string,
-		_labelCategories: Record<Category, Set<string>>,
-	): Promise<void> {
-		const newLabel = this.findLabelByPost(rkey);
-		if (!newLabel) {
-			console.log(`No matching label found for rkey: ${rkey}`);
-			return;
-		}
+  await t.step('getCategoryFromLabel - invalid label', async () => {
+    const aeon = new Aeon();
 
-		const category = this.getCategoryFromLabel(newLabel.identifier);
-		await this.labelerServer.createLabel({
-			uri: subject,
-			val: newLabel.identifier,
-			category: category,
-		});
-	}
+    await assertRejects(
+      async () => {
+        await aeon['getCategoryFromLabel']('invalid');
+      },
+      Error,
+      'Invalid label: invalid',
+    );
 
-	private findLabelByPost(rkey: string): { identifier: string } | undefined {
-		return LABELS.find((label) => label.rkey === rkey);
-	}
-
-	private getCategoryFromLabel(label: string): Category {
-		if (label.length !== 4) {
-			throw new Error(`Invalid label length: ${label}`);
-		}
-		const lowercaseLabel = label.toLowerCase();
-		if (CategorySchema.safeParse(lowercaseLabel).success) {
-			return lowercaseLabel as Category;
-		}
-		throw new Error(`Invalid label: ${label}`);
-	}
-}
-
-Deno.test('ÆON', async (t) => {
-	await t.step('init', async () => {
-		const aeon = new MockAeon();
-		await aeon.init();
-		assertSpyCall(aeon['agent'].login, 0);
-	});
-
-	await t.step('label - self labeling', async () => {
-		const aeon = new MockAeon();
-		const consoleSpy = spy(console, 'log');
-		await aeon.assignLabel('did:plc:7iza6de2dwap2sbkpav7c6c6', 'self');
-		assertSpyCall(consoleSpy, 0, {
-			args: [
-				'Self-labeling detected for did:plc:7iza6de2dwap2sbkpav7c6c6. No action taken.',
-			],
-		});
-		consoleSpy.restore();
-	});
-
-	await t.step('label - successful labeling', async () => {
-		const aeon = new MockAeon();
-		await aeon.assignLabel('did:plc:7iza6de2dwap2sbkpav7c6c6', '3jzfcijpj2z2a');
-		assertSpyCall(aeon['labelerServer'].createLabel, 0);
-	});
-
-	await t.step('findLabelByPost', () => {
-		const aeon = new MockAeon();
-		const result = aeon['findLabelByPost'](LABELS[0].rkey);
-		assertEquals(result, LABELS[0]);
-		const notFound = aeon['findLabelByPost']('3jzfcijpj222a');
-		assertEquals(notFound, undefined);
-	});
-
-	await t.step('getCategoryFromLabel', async () => {
-		const aeon = new MockAeon();
-		const validLabels = [
-			'adlr',
-			'arar',
-			'eulr',
-			'fklr',
-			'klbr',
-			'lstr',
-			'mnhr',
-			'star',
-			'stcr',
-		];
-		for (const label of validLabels) {
-			const result = await aeon['getCategoryFromLabel'](label);
-			assertEquals(result, label);
-		}
-	});
-
-	await t.step('getCategoryFromLabel - invalid label', async () => {
-		const aeon = new MockAeon();
-
-		await assertRejects(
-			async () => {
-				await aeon['getCategoryFromLabel']('invalid');
-			},
-			Error,
-			'Invalid label length: invalid',
-		);
-
-		await assertRejects(
-			async () => {
-				await aeon['getCategoryFromLabel']('abcd');
-			},
-			Error,
-			'Invalid label: abcd',
-		);
-	});
+    await assertRejects(
+      async () => {
+        await aeon['getCategoryFromLabel']('abcd');
+      },
+      Error,
+      'Invalid label: abcd',
+    );
+  });
 });
