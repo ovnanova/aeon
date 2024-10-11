@@ -11,10 +11,14 @@
 		"noImplicitReturns": true
 	},
 	"tasks": {
-		"start": "deno run --allow-net --allow-read --allow-write=. --allow-env --allow-ffi --allow-sys=hostname src/main.ts",
-		"test": "deno test --allow-read=. --allow-env=.env --coverage",
-		"fmt": "deno fmt src",
-		"lint": "deno lint src"
+		"setup": "deno run --allow-read --allow-write --allow-env --unstable-kv scripts/setup_kv.ts",
+		"start": "deno run --unstable-kv --allow-net --allow-read --allow-write=.,logs --allow-env --allow-ffi --allow-sys=hostname src/main.ts",
+		"test": "DENO_ENV=tests deno test --unstable-kv --allow-read=. --allow-write=logs --allow-env --allow-sys --coverage tests/*",
+		"test:aeon": "DENO_ENV=test deno test --unstable-kv --allow-read=. --allow-write=logs --allow-env --allow-sys --coverage tests/aeon_test.ts",
+		"test:config": "DENO_ENV=tests deno test --unstable-kv --allow-read=. --allow-write=logs --allow-env --allow-sys --coverage tests/config_test.ts",
+		"test:schema": "DENO_ENV=tests deno test --unstable-kv --allow-read=. --allow-write=logs --allow-env --allow-sys --coverage tests/schema_test.ts",
+		"fmt": "deno fmt src scripts tests",
+		"lint": "deno lint src scripts tests"
 	},
 	"importMap": "./import_map.json",
 	"fmt": {
