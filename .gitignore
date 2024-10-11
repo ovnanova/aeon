@@ -2,8 +2,8 @@
 coverage
 logs
 
-# Ignore setup_kv.ts but not the example
-scripts/setup_kv.ts
+# Ignore kv_setup.ts but not the example
+scripts/kv_setup.ts
 
 *.log
 deno.lock

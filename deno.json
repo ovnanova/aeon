@@ -11,8 +11,15 @@
 		"noImplicitReturns": true
 	},
 	"tasks": {
-		"setup": "deno run --allow-read --allow-write --allow-env --unstable-kv scripts/setup_kv.ts",
+		"setup": "deno run --allow-read --allow-write --allow-env --unstable-kv scripts/kv_setup.ts",
+		"setup:test": "deno run --allow-read --allow-write --allow-env --unstable-kv scripts/ex_kv_setup.ts",
 		"start": "deno run --unstable-kv --allow-net --allow-read --allow-write=.,logs --allow-env --allow-ffi --allow-sys=hostname src/main.ts",
+		"kv": "deno run --allow-read --allow-write --unstable-kv scripts/kv_cli.ts",
+		"kv:list": "deno run --allow-read --allow-write --unstable-kv scripts/kv_cli.ts list",
+		"kv:get": "deno run --allow-read --allow-write --unstable-kv scripts/kv_cli.ts get",
+		"kv:set": "deno run --allow-read --allow-write --unstable-kv scripts/kv_cli.ts set",
+		"kv:delete": "deno run --allow-read --allow-write --unstable-kv scripts/kv_cli.ts delete",
+		"kv:wipe": "deno run --allow-read --allow-write --unstable-kv scripts/kv_cli.ts wipe",
 		"test": "DENO_ENV=tests deno test --unstable-kv --allow-read=. --allow-write=logs --allow-env --allow-sys --coverage tests/*",
 		"test:aeon": "DENO_ENV=test deno test --unstable-kv --allow-read=. --allow-write=logs --allow-env --allow-sys --coverage tests/aeon_test.ts",
 		"test:config": "DENO_ENV=tests deno test --unstable-kv --allow-read=. --allow-write=logs --allow-env --allow-sys --coverage tests/config_test.ts",
