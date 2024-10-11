@@ -1,2 +1,9 @@
-.env
+# Directories
+coverage
+logs
+
+# Ignore setup_kv.ts but not the example
+scripts/setup_kv.ts
+
+*.log
 deno.lock
