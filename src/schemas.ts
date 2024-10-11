@@ -32,14 +32,12 @@ export const LabelSchema = z.object({
 export const ConfigSchema = z.object({
 	DID: DidSchema,
 	SIGNING_KEY: SigningKeySchema,
-	JETSTREAM_URL: z.string().url().default(
-		'wss://jetstream1.us-west.bsky.network/subscribe',
-	),
-	COLLECTION: z.string().min(1).default('app.bsky.feed.like'),
-	CURSOR_INTERVAL: z.number().int().positive().default(100000),
+	JETSTREAM_URL: z.string().url(),
+	COLLECTION: z.string().min(1),
+	CURSOR_INTERVAL: z.number().int().positive(),
 	BSKY_HANDLE: z.string().min(1),
 	BSKY_PASSWORD: z.string().min(1),
-});
+}).strict();
 
 export type Rkey = z.infer<typeof RkeySchema>;
 export type Did = z.infer<typeof DidSchema>;
@@ -48,4 +46,11 @@ export type Category = z.infer<typeof CategorySchema>;
 export type Label = z.infer<typeof LabelSchema>;
 export type Config = z.infer<typeof ConfigSchema>;
 
-export const CATEGORIES = CategorySchema.options;
+export const CATEGORIES = Object.fromEntries(
+	CategorySchema.options.map((category) => [category, category]),
+) as Record<Category, Category>;
+
+// Utility function to ensure exhaustive matching in switch statements
+export function assertNever(x: never): never {
+	throw new Error('Unexpected object: ' + x);
+}
