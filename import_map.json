@@ -7,7 +7,7 @@
 		"@std/testing": "jsr:@std/testing@^1.0.3",
 		"atproto": "npm:@atproto/api@0.13.11",
 		"jetstream": "npm:@skyware/jetstream@0.1.9",
-		"labeler": "npm:@skyware/labeler@0.1.7",
+		"labeler": "npm:@skyware/labeler@0.1.8",
 		"zod": "https://deno.land/x/zod@v3.23.8/mod.ts"
 	}
 }
