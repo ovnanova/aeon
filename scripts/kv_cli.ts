@@ -1,19 +1,35 @@
+import { SigningKeySchema } from '../src/schemas.ts';
+
 const kv = await Deno.openKv();
 
 async function listKeys() {
 	const iter = kv.list({ prefix: [] });
 	for await (const entry of iter) {
-		console.log(
-			`Key: ${entry.key.join(':')}, Value: ${JSON.stringify(entry.value)}`,
-		);
+		const key = entry.key.join(':');
+		let value = entry.value;
+
+		// Mask sensitive information
+		if (key === 'config:SIGNING_KEY' || key === 'config:BSKY_PASSWORD') {
+			value = maskSensitiveValue(key, value);
+		}
+
+		console.log(`Key: ${key}, Value: ${JSON.stringify(value)}`);
 	}
 }
 
 async function getValue(key: string[]) {
 	const result = await kv.get(key);
-	console.log(
-		`Value for key ${key.join(':')}: ${JSON.stringify(result.value)}`,
-	);
+	let value = result.value;
+
+	// Mask sensitive information
+	if (
+		key[0] === 'config' &&
+		(key[1] === 'SIGNING_KEY' || key[1] === 'BSKY_PASSWORD')
+	) {
+		value = maskSensitiveValue(key.join(':'), value);
+	}
+
+	console.log(`Value for key ${key.join(':')}: ${JSON.stringify(value)}`);
 }
 
 async function setValue(key: string[], value: unknown) {
@@ -37,6 +53,22 @@ async function wipeStore() {
 		await kv.delete(entry.key);
 	}
 	console.log('KV store wiped');
+}
+
+function maskSensitiveValue(key: string, value: unknown): string {
+	if (typeof value !== 'string') {
+		return '[INVALID]';
+	}
+
+	if (key.endsWith('SIGNING_KEY')) {
+		return SigningKeySchema.safeParse(value).success ? '[VALID]' : '[INVALID]';
+	}
+
+	if (key.endsWith('BSKY_PASSWORD')) {
+		return value.length > 0 ? '[SET]' : '[NOT SET]';
+	}
+
+	return '[MASKED]';
 }
 
 async function main() {
