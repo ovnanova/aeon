@@ -13,8 +13,8 @@ await setConfigValue(
 	'wss://jetstream1.us-west.bsky.network/subscribe',
 );
 await setConfigValue('COLLECTION', 'app.bsky.feed.like');
-await setConfigValue('CURSOR_INTERVAL', 100000);
-await setConfigValue('BSKY_HANDLE', 'aeon.netwatch.dev');
+await setConfigValue('CURSOR_INTERVAL', 10000);
+await setConfigValue('BSKY_HANDLE', 'test.bsky.social');
 await setConfigValue('BSKY_PASSWORD', 'this-is-an-app-password');
 
 console.log('Deno KV initialized with default values.');

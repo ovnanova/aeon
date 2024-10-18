@@ -9,6 +9,17 @@ export async function setValue(key: Deno.KvKey, value: unknown): Promise<void> {
 	await kv.set(key, value);
 }
 
+export async function updateValue(
+	key: Deno.KvKey,
+	updateFn: (oldValue: unknown) => unknown,
+): Promise<void> {
+	const kv = await Deno.openKv();
+	const existingEntry = await kv.get(key);
+	const newValue = updateFn(existingEntry.value);
+
+	await kv.set(key, newValue);
+}
+
 export async function deleteValue(key: Deno.KvKey): Promise<void> {
 	const kv = await Deno.openKv();
 	await kv.delete(key);
