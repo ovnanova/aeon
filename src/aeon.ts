@@ -47,7 +47,7 @@ export class Aeon {
 			});
 			console.log('ÆON initialized and logged in successfully');
 		} catch (error) {
-			console.error('Error in Aeon initialization:', error);
+			console.error('Error in ÆON initialization:', error);
 			throw new LabelingError('Failed to initialize ÆON');
 		}
 	}
@@ -102,9 +102,7 @@ export class Aeon {
 					if (typeof val === 'string' && typeof neg === 'string') {
 						const labels = labelCategories.get(category);
 						if (labels) {
-							if (neg === 'true') {
-								labels.delete(val);
-							} else {
+							if (neg === 'false') {
 								labels.add(val);
 							}
 						}
@@ -113,7 +111,7 @@ export class Aeon {
 			}
 
 			const labels = labelCategories.get(category);
-			if (labels) {
+			if (labels && labels.size > 0) {
 				console.log(
 					`Current ${category} labels: ${Array.from(labels).join(', ')}`,
 				);
@@ -135,6 +133,11 @@ export class Aeon {
 		}
 
 		const category = this.getCategoryFromLabel(newLabel.identifier);
+		if (!category) {
+			throw new LabelingError(
+				`Invalid category for label: ${newLabel.identifier}`,
+			);
+		}
 		const existingLabels = labelCategories.get(category) ?? new Set<string>();
 
 		console.log(
@@ -168,17 +171,85 @@ export class Aeon {
 		}
 	}
 
+	async deleteLabel(subject: string, labelIdentifier: string): Promise<void> {
+		const validatedSubject = DidSchema.parse(subject);
+
+		try {
+			const currentLabels = await this.fetchCurrentLabels(validatedSubject);
+			await this.removeLabelFromAccount(
+				validatedSubject,
+				labelIdentifier,
+				currentLabels,
+			);
+		} catch (error) {
+			console.error(
+				`Error in deleteLabel function: ${
+					error instanceof Error ? error.message : String(error)
+				}`,
+			);
+		}
+	}
+
+	private async removeLabelFromAccount(
+		subject: string,
+		labelIdentifier: string,
+		currentLabels: Map<Category, Set<string>>,
+	): Promise<void> {
+		let category: Category;
+		try {
+			const categoryResult = this.getCategoryFromLabel(labelIdentifier);
+			if (!categoryResult) {
+				console.log(`Invalid label: ${labelIdentifier}. No action taken.`);
+				return;
+			}
+			category = categoryResult;
+		} catch (error) {
+			console.error(
+				`Error removing label for ${subject}: ${
+					error instanceof Error ? error.message : String(error)
+				}`,
+			);
+			return;
+		}
+
+		const existingLabels = currentLabels.get(category) ?? new Set<string>();
+
+		if (!existingLabels.has(labelIdentifier)) {
+			console.log(
+				`Label ${labelIdentifier} not found for ${subject}. No action taken.`,
+			);
+			return;
+		}
+
+		console.log(
+			`Removing ${category} label ${labelIdentifier} from ${subject}.`,
+		);
+
+		try {
+			await this.labelerServer.createLabel({
+				uri: subject,
+				val: labelIdentifier,
+				neg: true,
+			});
+			console.log(
+				`Successfully removed label ${labelIdentifier} from ${subject}`,
+			);
+		} catch (error) {
+			console.error(
+				`Error removing label for ${subject}: ${
+					error instanceof Error ? error.message : String(error)
+				}`,
+			);
+		}
+	}
+
 	private findLabelByPost(rkey: string): Label | undefined {
 		return LABELS.find((label) => label.rkey === rkey);
 	}
 
-	private getCategoryFromLabel(label: string): Category {
-		const category = Object.keys(CATEGORIES).find((cat) =>
-			label.startsWith(`${cat}`)
-		);
-		if (!category) {
-			throw new LabelingError(`Invalid label: ${label}`);
-		}
-		return category as Category;
+	private getCategoryFromLabel(label: string): Category | undefined {
+		return Object.keys(CATEGORIES).find((cat) => label.startsWith(`${cat}`)) as
+			| Category
+			| undefined;
 	}
 }
