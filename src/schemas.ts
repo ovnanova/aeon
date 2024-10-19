@@ -50,8 +50,3 @@ export type Config = z.infer<typeof ConfigSchema>;
 export const CATEGORIES = Object.fromEntries(
 	CategorySchema.options.map((category) => [category, category]),
 ) as Record<Category, Category>;
-
-// Utility function to ensure exhaustive matching in switch statements
-export function assertNever(x: never): never {
-	throw new Error('Unexpected object: ' + x);
-}
