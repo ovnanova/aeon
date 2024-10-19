@@ -1,4 +1,4 @@
-import { AtpAgent, ComAtprotoLabelDefs } from 'atproto';
+import { AtpAgent } from 'atproto';
 import { LabelerServer } from 'labeler';
 import { CONFIG } from './config.ts';
 import { LABELS } from './labels.ts';
@@ -11,44 +11,36 @@ import {
 	SigningKeySchema,
 } from './schemas.ts';
 
-export class Aeon {
-	private labelerServer: LabelerServer;
-	private agent: AtpAgent;
+class LabelingError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = 'LabelingError';
+	}
+}
 
-	constructor() {
-		const validatedDID = DidSchema.parse(CONFIG.DID);
-		const validatedSigningKey = SigningKeySchema.parse(CONFIG.SIGNING_KEY);
-		this.labelerServer = new LabelerServer({
+export class Aeon {
+	private constructor(
+		private readonly labelerServer: LabelerServer,
+		private readonly agent: AtpAgent,
+	) {}
+	static create(
+		labelerServer?: LabelerServer,
+		agent?: AtpAgent,
+		config: typeof CONFIG = CONFIG,
+	): Aeon {
+		const validatedDID = DidSchema.parse(config.DID);
+		const validatedSigningKey = SigningKeySchema.parse(config.SIGNING_KEY);
+		const actualLabelerServer = labelerServer ?? new LabelerServer({
 			did: validatedDID,
 			signingKey: validatedSigningKey,
 		});
-		this.agent = new AtpAgent({ service: CONFIG.JETSTREAM_URL });
+		const actualAgent = agent ??
+			new AtpAgent({ service: CONFIG.BSKY_URL });
+		return new Aeon(actualLabelerServer, actualAgent);
 	}
 
 	async init(): Promise<void> {
 		try {
-			const validatedDID = DidSchema.parse(CONFIG.DID);
-
-			const validatedSigningKey = SigningKeySchema.parse(CONFIG.SIGNING_KEY);
-
-			// Initialize LabelerServer
-			try {
-				this.labelerServer = new LabelerServer({
-					did: validatedDID,
-					signingKey: validatedSigningKey,
-				});
-				console.log('LabelerServer initialized successfully');
-			} catch (error) {
-				console.error('Error initializing LabelerServer:', error);
-				if (error instanceof Error) {
-					console.error('Error name:', error.name);
-					console.error('Error message:', error.message);
-					console.error('Error stack:', error.stack);
-				}
-				throw new Error('Failed to initialize LabelerServer');
-			}
-
-			// Login to ATP
 			await this.agent.login({
 				identifier: CONFIG.BSKY_HANDLE,
 				password: CONFIG.BSKY_PASSWORD,
@@ -56,16 +48,13 @@ export class Aeon {
 			console.log('ÆON initialized and logged in successfully');
 		} catch (error) {
 			console.error('Error in Aeon initialization:', error);
-			throw new Error('Failed to initialize ÆON');
+			throw new LabelingError('Failed to initialize ÆON');
 		}
 	}
 
 	async assignLabel(subject: string, rkey: string): Promise<void> {
 		const validatedSubject = DidSchema.parse(subject);
 		const validatedRkey = RkeySchema.parse(rkey);
-		console.log(
-			`Processing label request: rkey=${validatedRkey}, subject=${validatedSubject}`,
-		);
 
 		if (validatedRkey === 'self') {
 			console.log(
@@ -87,45 +76,48 @@ export class Aeon {
 					error instanceof Error ? error.message : String(error)
 				}`,
 			);
+			throw new LabelingError(`Failed to assign label for ${validatedSubject}`);
 		}
 	}
 
-	private fetchCurrentLabels(did: string): Record<Category, Set<string>> {
-		const labelCategories = {
-			adlr: new Set<string>(),
-			arar: new Set<string>(),
-			eulr: new Set<string>(),
-			fklr: new Set<string>(),
-			klbr: new Set<string>(),
-			lstr: new Set<string>(),
-			mnhr: new Set<string>(),
-			star: new Set<string>(),
-			stcr: new Set<string>(),
-			drmr: new Set<string>(),
-		};
-		type Category = keyof typeof labelCategories;
-		const categories = Object.keys(labelCategories) as Category[];
+	private async fetchCurrentLabels(
+		did: string,
+	): Promise<Map<Category, Set<string>>> {
+		const labelCategories = new Map<Category, Set<string>>(
+			Object.entries(CATEGORIES).map((
+				[category],
+			) => [category as Category, new Set<string>()]),
+		);
 
-		for (const category of categories) {
-			const query = this.labelerServer.db
-				.prepare<unknown[], ComAtprotoLabelDefs.Label>(
-					`SELECT * FROM labels WHERE uri = ? AND val LIKE ? ORDER BY cts DESC`,
-				)
-				.all(did, `${category}-%`);
+		const query = await this.labelerServer.db.prepare<[string, string]>(
+			`SELECT val, neg FROM labels WHERE uri = ? AND val LIKE ? ORDER BY cts DESC`,
+		);
 
-			const labels = query.reduce(
-				(set: Set<string>, label: ComAtprotoLabelDefs.Label) => {
-					if (!label.neg) set.add(label.val);
-					else set.delete(label.val);
-					return set;
-				},
-				new Set<string>(),
-			);
+		for (const category of Object.keys(CATEGORIES) as Category[]) {
+			const results = await query.all(did, `${category}%`);
 
-			labelCategories[category] = labels;
-			console.log(
-				`Current ${category} labels: ${Array.from(labels).join(', ')}`,
-			);
+			for (const row of results) {
+				if (Array.isArray(row) && row.length === 2) {
+					const [val, neg] = row;
+					if (typeof val === 'string' && typeof neg === 'string') {
+						const labels = labelCategories.get(category);
+						if (labels) {
+							if (neg === 'true') {
+								labels.delete(val);
+							} else {
+								labels.add(val);
+							}
+						}
+					}
+				}
+			}
+
+			const labels = labelCategories.get(category);
+			if (labels) {
+				console.log(
+					`Current ${category} labels: ${Array.from(labels).join(', ')}`,
+				);
+			}
 		}
 
 		return labelCategories;
@@ -134,7 +126,7 @@ export class Aeon {
 	private async addOrUpdateLabel(
 		subject: string,
 		rkey: string,
-		labelCategories: Record<Category, Set<string>>,
+		labelCategories: Map<Category, Set<string>>,
 	): Promise<void> {
 		const newLabel = this.findLabelByPost(rkey);
 		if (!newLabel) {
@@ -143,7 +135,7 @@ export class Aeon {
 		}
 
 		const category = this.getCategoryFromLabel(newLabel.identifier);
-		const existingLabels = labelCategories[category];
+		const existingLabels = labelCategories.get(category) ?? new Set<string>();
 
 		console.log(
 			`Updating ${category} label for ${subject}. Existing: ${
@@ -172,6 +164,7 @@ export class Aeon {
 					error instanceof Error ? error.message : String(error)
 				}`,
 			);
+			throw new LabelingError(`Failed to update label for ${subject}`);
 		}
 	}
 
@@ -180,11 +173,12 @@ export class Aeon {
 	}
 
 	private getCategoryFromLabel(label: string): Category {
-		for (const [category] of Object.entries(CATEGORIES)) {
-			if (label.startsWith(`${category}-`)) {
-				return category as Category;
-			}
+		const category = Object.keys(CATEGORIES).find((cat) =>
+			label.startsWith(`${cat}`)
+		);
+		if (!category) {
+			throw new LabelingError(`Invalid label: ${label}`);
 		}
-		throw new Error(`Invalid label: ${label}`);
+		return category as Category;
 	}
 }
