@@ -37,6 +37,7 @@ export const ConfigSchema = z.object({
 	CURSOR_INTERVAL: z.number().int().positive(),
 	BSKY_HANDLE: z.string().min(1),
 	BSKY_PASSWORD: z.string().min(1),
+	BSKY_URL: z.string().url(),
 }).strict();
 
 export type Rkey = z.infer<typeof RkeySchema>;

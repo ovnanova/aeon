@@ -23,6 +23,7 @@ const defaultConfig: z.infer<typeof ConfigSchema> = {
 	CURSOR_INTERVAL: 10000,
 	BSKY_HANDLE: 'default.handle',
 	BSKY_PASSWORD: 'default_password',
+	BSKY_URL: 'https://bsky.social',
 };
 
 async function getConfigFromKV(): Promise<z.infer<typeof ConfigSchema>> {

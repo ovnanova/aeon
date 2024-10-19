@@ -59,9 +59,10 @@ Deno.test('ConfigSchema validation', () => {
 			'0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
 		JETSTREAM_URL: 'wss://jetstream1.us-west.bsky.network/subscribe',
 		COLLECTION: 'app.bsky.feed.like',
-		CURSOR_INTERVAL: 100000,
-		BSKY_HANDLE: 'aeon.netwatch.dev',
-		BSKY_PASSWORD: 'this-is-a-very-secure-password',
+		CURSOR_INTERVAL: 10000,
+		BSKY_HANDLE: 'test.bsky.social',
+		BSKY_PASSWORD: 'this-is-an-app-password',
+		BSKY_URL: 'https://bsky.social',
 	};
 	const parsedConfig = ConfigSchema.parse(validConfig);
 	assertEquals(parsedConfig.DID, validConfig.DID);
