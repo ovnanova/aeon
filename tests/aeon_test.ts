@@ -1,85 +1,152 @@
-import { assertEquals, assertRejects } from '@std/assert';
+// deno-lint-ignore-file require-await
+import { assertEquals, assertExists, assertRejects } from '@std/assert';
 import { assertSpyCall, spy } from '@std/testing/mock';
 import { LABELS } from '../src/labels.ts';
-import { Category } from '../src/schemas.ts';
+import {
+	Category,
+	ConfigSchema,
+	DidSchema,
+	SigningKeySchema,
+} from '../src/schemas.ts';
 import { Aeon } from '../src/aeon.ts';
+import { CONFIG, initializeConfig } from '../src/config.ts';
 
-// Mock Deno.openKv
-const mockKv = {
-  // deno-lint-ignore require-await
-  get: async (key: string[]) => {
-    if (key[0] === 'config') {
-      return { value: 'mock_value' };
-    }
-    return { value: null };
-  },
-  set: async () => {},
-};
+// Initialize the config before running tests
+await initializeConfig();
 
-// @ts-ignore: Suppress 'Cannot assign to 'openKv' because it is a read-only property' error
-Deno.openKv = () => Promise.resolve(mockKv);
+Deno.test('Config validation', () => {
+	const validatedConfig = ConfigSchema.parse(CONFIG);
+	assertEquals(
+		Object.keys(validatedConfig).length,
+		Object.keys(ConfigSchema.shape).length,
+		'All expected config keys should be present',
+	);
+
+	assertExists(CONFIG.DID, 'DID should exist');
+	const didParseResult = DidSchema.safeParse(CONFIG.DID);
+	assertEquals(didParseResult.success, true, 'DID should match the schema');
+
+	assertExists(CONFIG.SIGNING_KEY, 'SIGNING_KEY should exist');
+	const signingKeyParseResult = SigningKeySchema.safeParse(CONFIG.SIGNING_KEY);
+	assertEquals(
+		signingKeyParseResult.success,
+		true,
+		'SIGNING_KEY should match the schema',
+	);
+
+	assertExists(CONFIG.JETSTREAM_URL, 'JETSTREAM_URL should exist');
+	assertExists(CONFIG.COLLECTION, 'COLLECTION should exist');
+	assertExists(CONFIG.CURSOR_INTERVAL, 'CURSOR_INTERVAL should exist');
+	assertExists(CONFIG.BSKY_HANDLE, 'BSKY_HANDLE should exist');
+	assertExists(CONFIG.BSKY_PASSWORD, 'BSKY_PASSWORD should exist');
+	assertExists(CONFIG.BSKY_URL, 'BSKY_URL should exist');
+});
+
+// Mock the LabelerServer
+class MockLabelerServer {
+	db = {
+		prepare: () => ({
+			all: () => [],
+		}),
+	};
+	createLabels = async () => ({ success: true });
+	createLabel = async () => ({ success: true });
+}
+
+// Mock AtpAgent
+class MockAtpAgent {
+	login = async () => ({ success: true });
+}
 
 Deno.test('Aeon', async (t) => {
-  await t.step('init', async () => {
-    const aeon = new Aeon();
-    await aeon.init();
-    assertSpyCall(aeon['agent'].login, 0);
-  });
+	await t.step('init', async () => {
+		const mockAgent = new MockAtpAgent();
+		const loginSpy = spy(mockAgent, 'login');
+		const aeon = Aeon.create(new MockLabelerServer() as any, mockAgent as any);
 
-  await t.step('label - self labeling', async () => {
-    const aeon = new Aeon();
-    const consoleSpy = spy(console, 'log');
-    await aeon.assignLabel('did:plc:7iza6de2dwap2sbkpav7c6c6', 'self');
-    assertSpyCall(consoleSpy, 0, {
-      args: [
-        'Self-labeling detected for did:plc:7iza6de2dwap2sbkpav7c6c6. No action taken.',
-      ],
-    });
-    consoleSpy.restore();
-  });
+		await aeon.init();
 
-  await t.step('label - successful labeling', async () => {
-    const aeon = new Aeon();
-    await aeon.assignLabel('did:plc:7iza6de2dwap2sbkpav7c6c6', '3jzfcijpj2z2a');
-    assertSpyCall(aeon['labelerServer'].createLabel, 0);
-  });
+		assertSpyCall(loginSpy, 0);
+	});
 
-  await t.step('findLabelByPost', () => {
-    const aeon = new Aeon();
-    const result = aeon['findLabelByPost'](LABELS[0].rkey);
-    assertEquals(result, LABELS[0]);
-    const notFound = aeon['findLabelByPost']('3jzfcijpj222a');
-    assertEquals(notFound, undefined);
-  });
+	await t.step('assignLabel - self labeling', async () => {
+		const aeon = Aeon.create(
+			new MockLabelerServer() as any,
+			new MockAtpAgent() as any,
+		);
+		const consoleSpy = spy(console, 'log');
+		await aeon.assignLabel(CONFIG.DID, 'self');
+		assertSpyCall(consoleSpy, 0, {
+			args: [
+				`Self-labeling detected for ${CONFIG.DID}. No action taken.`,
+			],
+		});
+		consoleSpy.restore();
+	});
 
-  await t.step('getCategoryFromLabel', async () => {
-    const aeon = new Aeon();
-    const validCategories: Category[] = [
-      'adlr', 'arar', 'eulr', 'fklr', 'klbr', 'lstr', 'mnhr', 'star', 'stcr', 'drmr'
-    ];
-    for (const category of validCategories) {
-      const result = await aeon['getCategoryFromLabel'](category);
-      assertEquals(result, category);
-    }
-  });
+	await t.step('assignLabel - successful labeling', async () => {
+		const mockLabelerServer = new MockLabelerServer();
+		const createLabelSpy = spy(mockLabelerServer, 'createLabel');
+		const aeon = Aeon.create(
+			mockLabelerServer as any,
+			new MockAtpAgent() as any,
+		);
 
-  await t.step('getCategoryFromLabel - invalid label', async () => {
-    const aeon = new Aeon();
+		await aeon.assignLabel(CONFIG.DID, '3jzfcijpj2z2a');
 
-    await assertRejects(
-      async () => {
-        await aeon['getCategoryFromLabel']('invalid');
-      },
-      Error,
-      'Invalid label: invalid',
-    );
+		assertSpyCall(createLabelSpy, 0);
+	});
 
-    await assertRejects(
-      async () => {
-        await aeon['getCategoryFromLabel']('abcd');
-      },
-      Error,
-      'Invalid label: abcd',
-    );
-  });
+	await t.step('findLabelByPost', () => {
+		const aeon = Aeon.create(
+			new MockLabelerServer() as any,
+			new MockAtpAgent() as any,
+		);
+		const result = (aeon as any)['findLabelByPost'](LABELS[0].rkey);
+		assertEquals(result, LABELS[0]);
+		const notFound = (aeon as any)['findLabelByPost']('3jzfcijpj222a');
+		assertEquals(notFound, undefined);
+	});
+
+	await t.step('getCategoryFromLabel', () => {
+		const aeon = Aeon.create(
+			new MockLabelerServer() as any,
+			new MockAtpAgent() as any,
+		);
+		const validCategories: Category[] = [
+			'adlr',
+			'arar',
+			'eulr',
+			'fklr',
+			'klbr',
+			'lstr',
+			'mnhr',
+			'star',
+			'stcr',
+			'drmr',
+		];
+		for (const category of validCategories) {
+			const result = (aeon as any)['getCategoryFromLabel'](`${category}`);
+			assertEquals(result, category);
+		}
+	});
+
+	await t.step('getCategoryFromLabel - invalid label', () => {
+		const aeon = Aeon.create(
+			new MockLabelerServer() as any,
+			new MockAtpAgent() as any,
+		);
+
+		assertRejects(
+			async () => (aeon as any)['getCategoryFromLabel']('invalid'),
+			Error,
+			'Invalid label: invalid',
+		);
+
+		assertRejects(
+			async () => (aeon as any)['getCategoryFromLabel']('1234'),
+			Error,
+			'Invalid label: 1234',
+		);
+	});
 });
