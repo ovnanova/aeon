@@ -1,3 +1,8 @@
+// aeon.ts
+// - Core module for the ÆON labeler
+// - Manages label assignment, retrieval, and deletion
+// - Interacts with atprotocol and the Labeler Server
+// - Implements error handling and logging
 import { AtpAgent } from 'atproto';
 import { LabelerServer } from 'labeler';
 import { CONFIG } from './config.ts';
@@ -11,6 +16,17 @@ import {
 	SigningKeySchema,
 } from './schemas.ts';
 
+// AtpError
+// - Custom error class for atprotocol-related errors
+class AtpError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = 'AtpError';
+	}
+}
+
+// LabelingError
+// - Custom error class for labeling-related errors
 class LabelingError extends Error {
 	constructor(message: string) {
 		super(message);
@@ -18,11 +34,20 @@ class LabelingError extends Error {
 	}
 }
 
+// Aeon
+// - Main class for handling labeling operations
 export class Aeon {
+	// Private constructor
+	// - Initializes Aeon with LabelerServer and AtpAgent
 	private constructor(
 		private readonly labelerServer: LabelerServer,
 		private readonly agent: AtpAgent,
 	) {}
+
+	// create
+	// - Static factory method to create Aeon instance
+	// - Validates DID and signing key
+	// - Creates LabelerServer and AtpAgent if not provided
 	static create(
 		labelerServer?: LabelerServer,
 		agent?: AtpAgent,
@@ -39,6 +64,9 @@ export class Aeon {
 		return new Aeon(actualLabelerServer, actualAgent);
 	}
 
+	// init
+	// - Initializes Aeon by creating an atprotocol session
+	// - Throws ConnectionError on failure
 	async init(): Promise<void> {
 		try {
 			await this.agent.login({
@@ -48,10 +76,15 @@ export class Aeon {
 			console.log('ÆON initialized and logged in successfully');
 		} catch (error) {
 			console.error('Error in ÆON initialization:', error);
-			throw new LabelingError('Failed to initialize ÆON');
+			throw new AtpError('Failed to initialize ÆON');
 		}
 	}
 
+	// assignLabel
+	// - Assigns a label to a subject based on rkey
+	// - Validates subject and rkey
+	// - Handles self-labeling case
+	// - Fetches current labels and updates/adds new label
 	async assignLabel(subject: string, rkey: string): Promise<void> {
 		const validatedSubject = DidSchema.parse(subject);
 		const validatedRkey = RkeySchema.parse(rkey);
@@ -80,6 +113,10 @@ export class Aeon {
 		}
 	}
 
+	// fetchCurrentLabels
+	// - Retrieves current labels for a given DID
+	// - Queries LabelerServer database
+	// - Returns a Map of categories to Sets of label values
 	private async fetchCurrentLabels(
 		did: string,
 	): Promise<Map<Category, Set<string>>> {
@@ -121,6 +158,11 @@ export class Aeon {
 		return labelCategories;
 	}
 
+	// addOrUpdateLabel
+	// - Adds or updates a label for a subject
+	// - Finds matching label for given rkey
+	// - Negates existing labels in the same category
+	// - Creates new label
 	private async addOrUpdateLabel(
 		subject: string,
 		rkey: string,
@@ -171,6 +213,10 @@ export class Aeon {
 		}
 	}
 
+	// deleteLabel
+	// - Deletes a specific label from a subject
+	// - Validates subject
+	// - Fetches current labels and removes specified label
 	async deleteLabel(subject: string, labelIdentifier: string): Promise<void> {
 		const validatedSubject = DidSchema.parse(subject);
 
@@ -190,6 +236,11 @@ export class Aeon {
 		}
 	}
 
+	// removeLabelFromAccount
+	// - Removes a specific label from an account
+	// - Determines category of label
+	// - Checks if label exists for the account
+	// - Negates the label if it exists
 	private async removeLabelFromAccount(
 		subject: string,
 		labelIdentifier: string,
@@ -243,10 +294,16 @@ export class Aeon {
 		}
 	}
 
+	// findLabelByPost
+	// - Finds a Label object matching the given rkey
+	// - Returns undefined if no match is found
 	private findLabelByPost(rkey: string): Label | undefined {
 		return LABELS.find((label) => label.rkey === rkey);
 	}
 
+	// getCategoryFromLabel
+	// - Determines the category of a label based on its identifier
+	// - Returns undefined if no matching category is found
 	private getCategoryFromLabel(label: string): Category | undefined {
 		return Object.keys(CATEGORIES).find((cat) => label.startsWith(`${cat}`)) as
 			| Category

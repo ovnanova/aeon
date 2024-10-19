@@ -1,9 +1,19 @@
+// labels.ts
+// - Defines and validates predefined labels for the Aeon labeler
+// - Imports necessary schemas and logging utilities
+// - Exports a readonly array of Label objects (LABELS)
+// - Implements label validation function
+// - Provides utility functions for retrieving labels by rkey or category
+
 import { z } from 'zod';
 import { Label, LabelSchema } from './schemas.ts';
 import * as log from '@std/log';
 
 const logger = log.getLogger();
 
+// LABELS
+// - Readonly array of predefined Label objects
+// - Each label includes rkey, identifier, and category
 export const LABELS: readonly Label[] = [
 	{
 		rkey: '3jzfcijpj2z2b',
@@ -62,6 +72,9 @@ export const LABELS: readonly Label[] = [
 	},
 ] as const;
 
+// validateLabels
+// - Validates all predefined labels against the LabelSchema
+// - Logs validation results and throws error if validation fails
 function validateLabels() {
 	try {
 		LABELS.forEach((label, index) => {
@@ -83,6 +96,10 @@ function validateLabels() {
 
 validateLabels();
 
+// getLabelByRkey
+// - Retrieves a label by its rkey
+// - Returns undefined if no matching label is found
+// - Logs debug information about the search result
 export function getLabelByRkey(rkey: string): Label | undefined {
 	const label = LABELS.find((label) => label.rkey === rkey);
 	if (label) {
@@ -93,6 +110,10 @@ export function getLabelByRkey(rkey: string): Label | undefined {
 	return label;
 }
 
+// getLabelsByCategory
+// - Retrieves all labels for a given category
+// - Returns an array of matching Label objects
+// - Logs debug information about the number of labels found
 export function getLabelsByCategory(category: string): Label[] {
 	const labels = LABELS.filter((label) => label.category === category);
 	logger.debug(`Found ${labels.length} labels for category ${category}`);

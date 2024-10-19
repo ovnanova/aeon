@@ -1,9 +1,18 @@
+// config.ts
+// - Configuration management module for the ÆON labeler
+// - Handles initialization, retrieval, and updating of configuration
+// - Uses Deno KV for persistent storage
+// - Implements logging for configuration operations
+// - Provides placeholder configuration and schema validation
+
 import { z } from 'zod';
 import { ConfigSchema } from './schemas.ts';
 import * as log from '@std/log';
 import { ensureDir } from '@std/fs';
 import { join } from '@std/path';
 
+// ConfigurationError
+// - Custom error class for configuration-related errors
 class ConfigurationError extends Error {
 	constructor(message: string) {
 		super(message);
@@ -11,9 +20,17 @@ class ConfigurationError extends Error {
 	}
 }
 
+// Global variables
+// - kv: Deno KV store instance
+// - logger: Logging instance from @std/log
 let kv: Deno.Kv | null = null;
 let logger: log.Logger | null = null;
 
+// defaultConfig
+// - Default configuration object
+// - Used when initializing the configuration
+// - Contains non-functional example values
+// - Must be overridden with valid data before use by using: deno task kv:setup
 const defaultConfig: z.infer<typeof ConfigSchema> = {
 	DID: 'did:plc:7iza6de2dwap2sbkpav7c6c6',
 	SIGNING_KEY:
@@ -26,6 +43,11 @@ const defaultConfig: z.infer<typeof ConfigSchema> = {
 	BSKY_URL: 'https://bsky.social',
 };
 
+// getConfigFromKV
+// - Retrieves configuration from KV store
+// - Falls back to placeholder values if not set
+// - Parses and validates config using ConfigSchema
+// - Returns placeholder config in test environment
 async function getConfigFromKV(): Promise<z.infer<typeof ConfigSchema>> {
 	if (Deno.env.get('DENO_ENV') === 'test') {
 		return defaultConfig;
@@ -55,8 +77,15 @@ async function getConfigFromKV(): Promise<z.infer<typeof ConfigSchema>> {
 	return ConfigSchema.parse(config);
 }
 
+// CONFIG
+// - Exported configuration object
+// - Initialized during application startup
 export let CONFIG: z.infer<typeof ConfigSchema>;
 
+// setConfigValue
+// - Updates a single configuration value
+// - Validates entire config after update
+// - Persists change to KV store
 export async function setConfigValue<
 	K extends keyof z.infer<typeof ConfigSchema>,
 >(
@@ -79,6 +108,11 @@ export async function setConfigValue<
 	logger?.info(`Config value set: ${key} = ${logValue}`);
 }
 
+// initializeConfig
+// - Initializes KV store, logger, and configuration
+// - Sets up log file and handlers
+// - Populates KV store with placeholder values if empty
+// - Retrieves and validates full configuration
 export async function initializeConfig(): Promise<void> {
 	if (!kv) {
 		kv = await Deno.openKv();
@@ -130,6 +164,10 @@ export async function initializeConfig(): Promise<void> {
 
 	logger.info('Config initialization complete');
 }
+
+// closeConfig
+// - Closes and cleans up resources
+// - Destroys log handlers and closes KV store
 export async function closeConfig(): Promise<void> {
 	if (logger) {
 		for (const handler of logger.handlers) {

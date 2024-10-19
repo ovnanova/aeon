@@ -20,7 +20,6 @@
 		"kv:delete": "deno run --allow-read --allow-write --unstable-kv scripts/kv_cli.ts delete",
 		"kv:wipe": "deno run --allow-read --allow-write --unstable-kv scripts/kv_cli.ts wipe",
 		"kv:setup": "deno run --allow-read --allow-write --allow-env --unstable-kv scripts/kv_setup.ts",
-		"kv:setup_test": "deno run --allow-read --allow-write --allow-env --unstable-kv scripts/ex_kv_setup.ts",
 		"test": "DENO_ENV=test deno test --unstable-kv --allow-read=. --allow-write=logs --allow-env --allow-sys --allow-ffi --coverage tests/*",
 		"test:aeon": "DENO_ENV=test deno test --unstable-kv --allow-read=. --allow-write=logs --allow-env --allow-sys --allow-ffi --coverage tests/aeon_test.ts",
 		"test:config": "DENO_ENV=test deno test --unstable-kv --allow-read=. --allow-write=logs --allow-env --allow-sys --coverage tests/config_test.ts",

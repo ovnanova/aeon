@@ -1,8 +1,16 @@
+// kv_cli.ts
+// - Command-line interface for managing the Deno KV store
+// - Provides functions for listing, getting, setting, updating, and deleting KV pairs
+// - Implements input validation and error handling
+// - Masks sensitive values when displayed
+
 import { ConfigSchema, SigningKeySchema } from '../src/schemas.ts';
 import { z } from 'zod';
 
 const kv = await Deno.openKv();
 
+// validateKeyValue
+// - Validates a key-value pair against the ConfigSchema
 function validateKeyValue(key: Deno.KvKey, value: unknown): void {
 	if (key[0] !== 'config' || key.length !== 2 || typeof key[1] !== 'string') {
 		throw new Error(
@@ -30,6 +38,9 @@ function validateKeyValue(key: Deno.KvKey, value: unknown): void {
 	}
 }
 
+// listKeys
+// - Lists all keys and their values in the KV store
+// - Call this function by using: deno task kv:list
 async function listKeys() {
 	const iter = kv.list({ prefix: ['config'] });
 	for await (const entry of iter) {
@@ -44,6 +55,9 @@ async function listKeys() {
 	}
 }
 
+// getValue
+// - Retrieves and displays the value for a given key
+// - Call this function by using: deno task kv:get config <KEY>
 async function getValue(key: Deno.KvKey) {
 	if (key[0] !== 'config' || key.length !== 2) {
 		throw new Error(
@@ -66,12 +80,18 @@ async function getValue(key: Deno.KvKey) {
 	console.log(`Value for key ${key.join(':')}: ${JSON.stringify(value)}`);
 }
 
+// setValue
+// - Sets a value for a given key after validation
+// - Call this function by using: deno task kv:set config <KEY> <value>
 async function setValue(key: Deno.KvKey, value: unknown) {
 	validateKeyValue(key, value);
 	await kv.set(key, value);
 	console.log(`Set value for key ${key.join(':')}: ${JSON.stringify(value)}`);
 }
 
+// updateValue
+// - Updates a value for a given key after validation
+// - Call this function by using: deno task kv:update config <KEY> <value>
 async function updateValue(key: Deno.KvKey, value: unknown) {
 	validateKeyValue(key, value);
 	await kv.set(key, value);
@@ -80,6 +100,9 @@ async function updateValue(key: Deno.KvKey, value: unknown) {
 	);
 }
 
+// deleteKey
+// - Deletes a key-value pair from the KV store
+// - Call this function by using: deno task kv:delete config <KEY>
 async function deleteKey(key: Deno.KvKey) {
 	if (key[0] !== 'config' || key.length !== 2 || typeof key[1] !== 'string') {
 		throw new Error(
@@ -96,6 +119,9 @@ async function deleteKey(key: Deno.KvKey) {
 	console.log(`Deleted key ${key.join(':')}`);
 }
 
+// wipeStore
+// - Removes all key-value pairs from the KV store
+// - Call this function by using: deno task kv:wipe
 async function wipeStore() {
 	const iter = kv.list({ prefix: ['config'] });
 	for await (const entry of iter) {
@@ -104,6 +130,8 @@ async function wipeStore() {
 	console.log('KV store wiped');
 }
 
+// maskSensitiveValue
+// - Masks sensitive values when displayed in the CLI
 function maskSensitiveValue(key: Deno.KvKey, value: unknown): string {
 	if (typeof value !== 'string') {
 		return '[INVALID]';
@@ -120,6 +148,8 @@ function maskSensitiveValue(key: Deno.KvKey, value: unknown): string {
 	return value;
 }
 
+// main
+// - Parses command-line arguments and executes the appropriate function
 async function main() {
 	const command = Deno.args[0];
 	const key = Deno.args.slice(1, -1) as Deno.KvKey;
@@ -171,3 +201,5 @@ async function main() {
 }
 
 await main();
+
+// Usage instructions are provided when running the script without arguments or with an invalid command

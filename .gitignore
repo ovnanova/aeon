@@ -7,5 +7,3 @@ logs
 deno.lock
 labels*
 
-# Ignore kv_setup.ts but not the example
-scripts/kv_setup.ts

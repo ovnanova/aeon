@@ -1,3 +1,11 @@
+// main.ts
+// - Core application file for the ÆON labeler
+// - Imports necessary modules and initializes key components
+// - Sets up logging, configuration, and Deno KV store
+// - Manages ATP agent, Aeon instance, and Jetstream connection
+// - Handles cursor initialization and updates
+// - Implements error handling and graceful shutdown
+
 import { AtpAgent } from 'atproto';
 import { Jetstream } from 'jetstream';
 import { Aeon } from './aeon.ts';
@@ -6,13 +14,20 @@ import { DidSchema, RkeySchema } from './schemas.ts';
 import { verifyKvStore } from '../scripts/kv_utils.ts';
 import * as log from '@std/log';
 
+// Global constants
+// - kv: Deno key-value store instance
+// - logger: Logging instance from @std/log
 const kv = await Deno.openKv();
 const logger = log.getLogger();
 
+// main function
+// - Asynchronous function orchestrating the application
+// - Initializes config, verifies KV store
+// - Sets up ATP agent, Aeon, and Jetstream
+// - Manages login, cursor, listeners, and shutdown handlers
 async function main() {
 	try {
 		await initializeConfig();
-
 		if (!(await verifyKvStore())) {
 			throw new Error('KV store verification failed');
 		}
@@ -64,6 +79,9 @@ async function main() {
 	}
 }
 
+// initializeCursor function
+// - Retrieves or sets initial cursor value in KV store
+// - Returns cursor as a number (microseconds since epoch)
 async function initializeCursor(): Promise<number> {
 	const cursorResult = await kv.get(['cursor']);
 	if (cursorResult.value === null) {
@@ -84,6 +102,10 @@ async function initializeCursor(): Promise<number> {
 	}
 }
 
+// setupJetstreamListeners function
+// - Sets up event listeners for Jetstream
+// - Handles 'open', 'close', and 'error' events
+// - Processes 'create' events for specified collection
 function setupJetstreamListeners(jetstream: Jetstream, aeon: Aeon) {
 	jetstream.on('open', () => {
 		logger.info(
@@ -117,6 +139,9 @@ function setupJetstreamListeners(jetstream: Jetstream, aeon: Aeon) {
 	});
 }
 
+// setupCursorUpdateInterval function
+// - Periodically updates cursor value in KV store
+// - Uses interval specified in configuration
 function setupCursorUpdateInterval(jetstream: Jetstream) {
 	setInterval(async () => {
 		if (jetstream.cursor) {
@@ -130,6 +155,9 @@ function setupCursorUpdateInterval(jetstream: Jetstream) {
 	}, CONFIG.CURSOR_INTERVAL);
 }
 
+// setupShutdownHandlers function
+// - Sets up handlers for SIGINT and SIGTERM signals
+// - Ensures graceful shutdown of Jetstream connection
 function setupShutdownHandlers(jetstream: Jetstream) {
 	const shutdown = () => {
 		logger.info('Shutting down...');
@@ -141,6 +169,8 @@ function setupShutdownHandlers(jetstream: Jetstream) {
 	Deno.addSignalListener('SIGTERM', shutdown);
 }
 
+// Main execution
+// - Runs the main function and handles any unhandled errors
 main().catch((error) => {
 	logger.critical(
 		`Unhandled error in main: ${

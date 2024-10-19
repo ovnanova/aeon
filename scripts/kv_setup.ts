@@ -1,9 +1,17 @@
+// kv_setup.ts
+// - Script for initializing and setting up Deno KV store
+// - Demonstrates how to validate and set configuration values
+// - Provides a template for users to customize their own setup
+
 import { initializeConfig, setConfigValue } from '../src/config.ts';
 import { ConfigSchema } from '../src/schemas.ts';
 import { z } from 'zod';
 
+// validateAndSetConfig
+// - Sets the initial configuration in the KV store
+// - Uses Zod for schema validation before setting values
+// - Logs results of the setup process
 async function validateAndSetConfig() {
-	// Define the configuration object
 	const configToSet = {
 		DID: 'did:plc:7iza6de2dwap2sbkpav7c6c6',
 		SIGNING_KEY:
@@ -42,3 +50,9 @@ async function validateAndSetConfig() {
 }
 
 await validateAndSetConfig();
+
+// Instructions for use:
+// 1. Modify the 'configToSet' object with your desired configuration
+// 2. Run the script using: deno task kv:setup
+// 3. The script will validate your configuration and set it in the KV store
+// 4. If there are any validation errors, they will be logged to the console
