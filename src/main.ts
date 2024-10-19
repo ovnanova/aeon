@@ -1,9 +1,9 @@
 import { AtpAgent } from 'atproto';
 import { Jetstream } from 'jetstream';
 import { Aeon } from './aeon.ts';
-import { CONFIG } from './config.ts';
+import { CONFIG, initializeConfig } from './config.ts';
 import { DidSchema, RkeySchema } from './schemas.ts';
-import { verifyKvStore } from '../scripts/utils_kv.ts';
+import { verifyKvStore } from '../scripts/kv_utils.ts';
 import * as log from '@std/log';
 
 const kv = await Deno.openKv();
@@ -11,12 +11,14 @@ const logger = log.getLogger();
 
 async function main() {
 	try {
+		await initializeConfig();
+
 		if (!(await verifyKvStore())) {
 			throw new Error('KV store verification failed');
 		}
 		logger.info('KV store verified successfully');
 
-		const agent = new AtpAgent({ service: CONFIG.JETSTREAM_URL });
+		const agent = new AtpAgent({ service: CONFIG.BSKY_URL });
 		const aeon = await Aeon.create();
 
 		if (!CONFIG.BSKY_HANDLE || !CONFIG.BSKY_PASSWORD) {
