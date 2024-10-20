@@ -3,15 +3,16 @@
 // - Manages label assignment, retrieval, and deletion
 // - Interacts with atprotocol and the Labeler Server
 // - Implements error handling and logging
+
 import { AtpAgent } from 'atproto';
 import { LabelerServer } from 'labeler';
 import { CONFIG } from './config.ts';
 import { LABELS } from './labels.ts';
 import {
 	CATEGORIES,
-	Category,
 	DidSchema,
 	Label,
+	LabelCategory,
 	RkeySchema,
 	SigningKeySchema,
 } from './schemas.ts';
@@ -119,18 +120,18 @@ export class Aeon {
 	// - Returns a Map of categories to Sets of label values
 	private async fetchCurrentLabels(
 		did: string,
-	): Promise<Map<Category, Set<string>>> {
-		const labelCategories = new Map<Category, Set<string>>(
+	): Promise<Map<LabelCategory, Set<string>>> {
+		const labelCategories = new Map<LabelCategory, Set<string>>(
 			Object.entries(CATEGORIES).map((
 				[category],
-			) => [category as Category, new Set<string>()]),
+			) => [category as LabelCategory, new Set<string>()]),
 		);
 
 		const query = await this.labelerServer.db.prepare<[string, string]>(
 			`SELECT val, neg FROM labels WHERE uri = ? AND val LIKE ? ORDER BY cts DESC`,
 		);
 
-		for (const category of Object.keys(CATEGORIES) as Category[]) {
+		for (const category of Object.keys(CATEGORIES) as LabelCategory[]) {
 			const results = await query.all(did, `${category}%`);
 
 			for (const row of results) {
@@ -166,7 +167,7 @@ export class Aeon {
 	private async addOrUpdateLabel(
 		subject: string,
 		rkey: string,
-		labelCategories: Map<Category, Set<string>>,
+		labelCategories: Map<LabelCategory, Set<string>>,
 	): Promise<void> {
 		const newLabel = this.findLabelByPost(rkey);
 		if (!newLabel) {
@@ -244,9 +245,9 @@ export class Aeon {
 	private async removeLabelFromAccount(
 		subject: string,
 		labelIdentifier: string,
-		currentLabels: Map<Category, Set<string>>,
+		currentLabels: Map<LabelCategory, Set<string>>,
 	): Promise<void> {
-		let category: Category;
+		let category: LabelCategory;
 		try {
 			const categoryResult = this.getCategoryFromLabel(labelIdentifier);
 			if (!categoryResult) {
@@ -304,9 +305,9 @@ export class Aeon {
 	// getCategoryFromLabel
 	// - Determines the category of a label based on its identifier
 	// - Returns undefined if no matching category is found
-	private getCategoryFromLabel(label: string): Category | undefined {
+	private getCategoryFromLabel(label: string): LabelCategory | undefined {
 		return Object.keys(CATEGORIES).find((cat) => label.startsWith(`${cat}`)) as
-			| Category
+			| LabelCategory
 			| undefined;
 	}
 }

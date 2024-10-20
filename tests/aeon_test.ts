@@ -3,9 +3,9 @@ import { assertEquals, assertExists } from '@std/assert';
 import { assertSpyCall, spy } from '@std/testing/mock';
 import { LABELS } from '../src/labels.ts';
 import {
-	Category,
 	ConfigSchema,
 	DidSchema,
+	LabelCategory,
 	SigningKeySchema,
 } from '../src/schemas.ts';
 import { Aeon } from '../src/aeon.ts';
@@ -168,7 +168,7 @@ Deno.test('ÆON', async (t) => {
 			new MockLabelerServer() as any,
 			new MockAtpAgent() as any,
 		);
-		const validCategories: Category[] = [
+		const validCategories: LabelCategory[] = [
 			'adlr',
 			'arar',
 			'eulr',
@@ -205,7 +205,7 @@ Deno.test('ÆON', async (t) => {
 			new MockLabelerServer() as any,
 			new MockAtpAgent() as any,
 		);
-		const validCategories: Category[] = [
+		const validCategories: LabelCategory[] = [
 			'adlr',
 			'arar',
 			'eulr',
