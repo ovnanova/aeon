@@ -27,11 +27,11 @@ export const DidSchema = z.string()
 	.regex(/^did:plc:[a-z2-7]{24}$/);
 
 // SigningKeySchema
-// - 64-character string
-// - lowercase ASCII characters only (0-9, a-f)
-// - represents a 256-bit (32-byte) cryptographic key
-// - encoded as hexadecimal
-export const SigningKeySchema = z.string().regex(/^[0-9a-f]{64}$/);
+// - 43-character string
+// - standard Base64 alphabet only (A-Z, a-z, 0-9, +, /)
+// - Represents a 256-bit (32-byte) cryptographic key
+// - Encoded as standard base64 (no padding)
+export const SigningKeySchema = z.string().regex(/^[A-Za-z0-9+/]{43}$/);
 
 // ConfigSchema
 // - object with DID, SIGNING_KEY, and other configuration fields

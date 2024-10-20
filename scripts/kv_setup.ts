@@ -14,8 +14,7 @@ import { z } from 'zod';
 async function validateAndSetConfig() {
 	const configToSet = {
 		DID: 'did:plc:7iza6de2dwap2sbkpav7c6c6',
-		SIGNING_KEY:
-			'0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+		SIGNING_KEY: 'K8ej1iNr0qpOT5RQZzA7/nMx2+4dFgYuCVbL3PwcJaU',
 		JETSTREAM_URL: 'wss://jetstream1.us-west.bsky.network/subscribe',
 		COLLECTION: 'app.bsky.feed.like',
 		CURSOR_INTERVAL: 10000,

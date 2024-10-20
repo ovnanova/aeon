@@ -33,8 +33,7 @@ let logger: log.Logger | null = null;
 // - Must be overridden with valid data before use by using: deno task kv:setup
 export const defaultConfig: z.infer<typeof ConfigSchema> = {
 	DID: 'did:plc:7iza6de2dwap2sbkpav7c6c6',
-	SIGNING_KEY:
-		'0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+	SIGNING_KEY: 'K8ej1iNr0qpOT5RQZzA7/nMx2+4dFgYuCVbL3PwcJaU',
 	JETSTREAM_URL: 'wss://jetstream1.us-west.bsky.network/subscribe',
 	COLLECTION: 'app.bsky.feed.like',
 	CURSOR_INTERVAL: 10000,
