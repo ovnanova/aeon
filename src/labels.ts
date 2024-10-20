@@ -1,6 +1,9 @@
 // labels.ts
-// - Defines the readonly source of truth for label data
+// - Defines the source of truth for available labels
 
+// LABELS
+// - Readonly array of Label objects that are validated against the schema
+// - Each label is comprised of rkey, identifier, and category
 export const LABELS = [
 	{
 		rkey: '3jzfcijpj2z2b',
