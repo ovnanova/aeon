@@ -65,7 +65,7 @@ export const LabelSchema = z.object({
 	rkey: RkeySchema,
 	identifier: LabelIdentifierSchema,
 	category: LabelCategorySchema,
-});
+}).strict();
 
 // Type definitions derived from schemas
 export type Rkey = z.infer<typeof RkeySchema>;

@@ -1,8 +1,8 @@
 import { assertEquals, assertExists } from '@std/assert';
-import { ConfigSchema, DidSchema, SigningKeySchema } from '../src/schemas.ts';
+import { ConfigSchema } from '../src/schemas.ts';
 import { closeConfig, CONFIG, initializeConfig } from '../src/config.ts';
 
-Deno.test('Config loaded correctly and validates schema', async () => {
+Deno.test('Config loaded correctly from KV', async () => {
 	try {
 		await initializeConfig();
 
@@ -14,65 +14,21 @@ Deno.test('Config loaded correctly and validates schema', async () => {
 			'All expected config keys should be present',
 		);
 
-		// Validate DID format
-		assertExists(CONFIG.DID, 'DID should exist');
-		const didParseResult = DidSchema.safeParse(CONFIG.DID);
-		assertEquals(didParseResult.success, true, 'DID should match the schema');
+		// Check that all required properties exist and are of the correct type
+		for (const [key, value] of Object.entries(ConfigSchema.shape)) {
+			assertExists(CONFIG[key as keyof typeof CONFIG], `${key} should exist`);
+			assertEquals(
+				typeof CONFIG[key as keyof typeof CONFIG],
+				value._def.typeName === 'ZodString'
+					? 'string'
+					: value._def.typeName === 'ZodNumber'
+					? 'number'
+					: 'unknown',
+				`${key} should be of the correct type`,
+			);
+		}
 
-		// Validate SIGNING_KEY format
-		assertExists(CONFIG.SIGNING_KEY, 'SIGNING_KEY should exist');
-		const signingKeyParseResult = SigningKeySchema.safeParse(
-			CONFIG.SIGNING_KEY,
-		);
-		assertEquals(
-			signingKeyParseResult.success,
-			true,
-			'SIGNING_KEY should match the schema',
-		);
-
-		// Validate other config properties
-		assertExists(CONFIG.JETSTREAM_URL, 'JETSTREAM_URL should exist');
-		assertEquals(
-			typeof CONFIG.JETSTREAM_URL,
-			'string',
-			'JETSTREAM_URL should be a string',
-		);
-
-		assertExists(CONFIG.COLLECTION, 'COLLECTION should exist');
-		assertEquals(
-			typeof CONFIG.COLLECTION,
-			'string',
-			'COLLECTION should be a string',
-		);
-
-		assertExists(CONFIG.CURSOR_INTERVAL, 'CURSOR_INTERVAL should exist');
-		assertEquals(
-			typeof CONFIG.CURSOR_INTERVAL,
-			'number',
-			'CURSOR_INTERVAL should be a number',
-		);
-
-		assertExists(CONFIG.BSKY_HANDLE, 'BSKY_HANDLE should exist');
-		assertEquals(
-			typeof CONFIG.BSKY_HANDLE,
-			'string',
-			'BSKY_HANDLE should be a string',
-		);
-
-		assertExists(CONFIG.BSKY_PASSWORD, 'BSKY_PASSWORD should exist');
-		assertEquals(
-			typeof CONFIG.BSKY_PASSWORD,
-			'string',
-			'BSKY_PASSWORD should be a string',
-		);
-		assertExists(CONFIG.BSKY_URL, 'BSKY_URL should exist');
-		assertEquals(
-			typeof CONFIG.BSKY_URL,
-			'string',
-			'BSKY_URL should be a string',
-		);
-
-		console.log('All config properties validated successfully');
+		console.log('All config properties loaded and validated successfully');
 	} finally {
 		await closeConfig();
 	}

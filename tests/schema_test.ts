@@ -3,14 +3,21 @@ import {
 	ConfigSchema,
 	DidSchema,
 	LabelCategorySchema,
+	LabelIdentifierSchema,
 	LabelSchema,
 	RkeySchema,
 	SigningKeySchema,
 } from '../src/schemas.ts';
+import { LABELS } from '../src/labels.ts';
+import { defaultConfig } from '../src/config.ts';
 
 Deno.test('RkeySchema validation', () => {
-	assertEquals(RkeySchema.parse('3jzfcijpj2z2a'), '3jzfcijpj2z2a');
+	LABELS.forEach((label) => {
+		assertEquals(RkeySchema.parse(label.rkey), label.rkey);
+	});
+
 	assertEquals(RkeySchema.parse('self'), 'self');
+
 	assertThrows(
 		() => RkeySchema.parse('3jzfcijpj2z2aa'),
 		Error,
@@ -21,15 +28,86 @@ Deno.test('RkeySchema validation', () => {
 		Error,
 		'Invalid',
 	);
+	assertThrows(
+		() => RkeySchema.parse('invalid'),
+		Error,
+		'Invalid',
+	);
+});
+
+Deno.test('DidSchema validation', () => {
+	assertEquals(
+		DidSchema.parse(defaultConfig.DID),
+		defaultConfig.DID,
+	);
+	assertThrows(
+		() => DidSchema.parse('invalid-did'),
+		Error,
+		'Invalid',
+	);
+	assertThrows(
+		() => DidSchema.parse('did:plc:invalid'),
+		Error,
+		'Invalid',
+	);
+});
+
+Deno.test('SigningKeySchema validation', () => {
+	assertEquals(
+		SigningKeySchema.parse(defaultConfig.SIGNING_KEY),
+		defaultConfig.SIGNING_KEY,
+	);
+	assertThrows(
+		() => SigningKeySchema.parse('invalid-key'),
+		Error,
+		'Invalid',
+	);
+	assertThrows(
+		() => SigningKeySchema.parse('0123456789abcdef'),
+		Error,
+		'Invalid',
+	);
+	assertThrows(
+		() =>
+			SigningKeySchema.parse(
+				'0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdeX',
+			),
+		Error,
+		'Invalid',
+	);
+});
+
+Deno.test('LabelIdentifierSchema validation', () => {
+	LABELS.forEach((label) => {
+		assertEquals(
+			LabelIdentifierSchema.parse(label.identifier),
+			label.identifier,
+		);
+	});
+	assertThrows(
+		() => LabelIdentifierSchema.parse('invalid'),
+		Error,
+		'Invalid enum value',
+	);
+});
+
+Deno.test('LabelCategorySchema validation', () => {
+	LABELS.forEach((label) => {
+		assertEquals(LabelCategorySchema.parse(label.category), label.category);
+	});
+	assertThrows(
+		() => LabelCategorySchema.parse('invalid'),
+		Error,
+		'Invalid enum value',
+	);
 });
 
 Deno.test('LabelSchema validation', () => {
-	const validLabel = {
-		rkey: '3jzfcijpj2z2a',
-		identifier: 'adlr',
-		category: 'adlr',
-	};
-	assertEquals(LabelSchema.parse(validLabel), validLabel);
+	LABELS.forEach((label) => {
+		assertEquals(LabelSchema.parse(label), label);
+	});
+
+	const validLabel = LABELS[0];
 	assertThrows(
 		() => LabelSchema.parse({ ...validLabel, rkey: '3jzfcijpj2z2aa' }),
 		Error,
@@ -45,105 +123,45 @@ Deno.test('LabelSchema validation', () => {
 		Error,
 		'Invalid enum value',
 	);
+	assertThrows(
+		() => LabelSchema.parse({ ...validLabel, extraField: 'extra' }),
+		Error,
+		'Unrecognized key(s) in object',
+	);
 });
 
 Deno.test('ConfigSchema validation', () => {
-	const validConfig = {
-		DID: 'did:plc:7iza6de2dwap2sbkpav7c6c6',
-		SIGNING_KEY:
-			'0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
-		JETSTREAM_URL: 'wss://jetstream1.us-west.bsky.network/subscribe',
-		COLLECTION: 'app.bsky.feed.like',
-		CURSOR_INTERVAL: 10000,
-		BSKY_HANDLE: 'test.bsky.social',
-		BSKY_PASSWORD: 'this-is-an-app-password',
-		BSKY_URL: 'https://bsky.social',
-	};
-	const parsedConfig = ConfigSchema.parse(validConfig);
-	assertEquals(parsedConfig.DID, validConfig.DID);
-	assertEquals(parsedConfig.SIGNING_KEY, validConfig.SIGNING_KEY);
-	assertEquals(
-		parsedConfig.JETSTREAM_URL,
-		validConfig.JETSTREAM_URL,
-	);
-	assertEquals(parsedConfig.COLLECTION, validConfig.COLLECTION);
-	assertEquals(parsedConfig.CURSOR_INTERVAL, validConfig.CURSOR_INTERVAL);
-	assertEquals(parsedConfig.BSKY_HANDLE, validConfig.BSKY_HANDLE);
-	assertEquals(parsedConfig.BSKY_PASSWORD, validConfig.BSKY_PASSWORD);
+	const parsedConfig = ConfigSchema.parse(defaultConfig);
+	assertEquals(parsedConfig, defaultConfig, 'Default config should be valid');
+
 	assertThrows(
-		() => ConfigSchema.parse({ ...validConfig, DID: 'invalid-did' }),
+		() => ConfigSchema.parse({ ...defaultConfig, DID: 'invalid-did' }),
 		Error,
 		'Invalid',
 	);
 	assertThrows(
-		() => ConfigSchema.parse({ ...validConfig, SIGNING_KEY: 'invalid-key' }),
+		() => ConfigSchema.parse({ ...defaultConfig, SIGNING_KEY: 'invalid-key' }),
 		Error,
 		'Invalid',
 	);
 	assertThrows(
-		() => ConfigSchema.parse({ ...validConfig, JETSTREAM_URL: 'not-a-url' }),
+		() => ConfigSchema.parse({ ...defaultConfig, JETSTREAM_URL: 'not-a-url' }),
 		Error,
 		'Invalid url',
 	);
 	assertThrows(
-		() => ConfigSchema.parse({ ...validConfig, CURSOR_INTERVAL: -1 }),
+		() => ConfigSchema.parse({ ...defaultConfig, CURSOR_INTERVAL: -1 }),
 		Error,
 		'Number must be greater than 0',
 	);
 	assertThrows(
-		() => ConfigSchema.parse({ ...validConfig, BSKY_HANDLE: '' }),
+		() => ConfigSchema.parse({ ...defaultConfig, BSKY_HANDLE: '' }),
 		Error,
 		'String must contain at least 1 character(s)',
 	);
-});
-
-Deno.test('DidSchema validation', () => {
-	assertEquals(
-		DidSchema.parse('did:plc:7iza6de2dwap2sbkpav7c6c6'),
-		'did:plc:7iza6de2dwap2sbkpav7c6c6',
-	);
 	assertThrows(
-		() => DidSchema.parse('invalid-did'),
+		() => ConfigSchema.parse({ ...defaultConfig, EXTRA_FIELD: 'extra' }),
 		Error,
-		'Invalid',
-	);
-});
-
-Deno.test('SigningKeySchema validation', () => {
-	const validKey =
-		'0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
-	assertEquals(SigningKeySchema.parse(validKey), validKey);
-	assertThrows(
-		() => SigningKeySchema.parse('invalid-key'),
-		Error,
-		'Invalid',
-	);
-	assertThrows(
-		() => SigningKeySchema.parse('0123456789abcdef'),
-		Error,
-		'Invalid',
-	);
-});
-
-Deno.test('CategorySchema validation', () => {
-	const validLabelCategories = [
-		'adlr',
-		'arar',
-		'eulr',
-		'fklr',
-		'klbr',
-		'lstr',
-		'mnhr',
-		'star',
-		'stcr',
-		'drmr',
-	];
-	for (const category of validLabelCategories) {
-		assertEquals(LabelCategorySchema.parse(category), category);
-	}
-	assertThrows(
-		() => LabelCategorySchema.parse('invalid'),
-		Error,
-		'Invalid enum value',
+		'Unrecognized key(s) in object',
 	);
 });

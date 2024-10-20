@@ -31,7 +31,7 @@ let logger: log.Logger | null = null;
 // - Used when initializing the configuration
 // - Contains non-functional example values
 // - Must be overridden with valid data before use by using: deno task kv:setup
-const defaultConfig: z.infer<typeof ConfigSchema> = {
+export const defaultConfig: z.infer<typeof ConfigSchema> = {
 	DID: 'did:plc:7iza6de2dwap2sbkpav7c6c6',
 	SIGNING_KEY:
 		'0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
