@@ -1,5 +1,4 @@
-// config.ts
-// - Configuration management module for the ÆON labeler
+// - Configuration management module for ÆON
 // - Handles initialization, retrieval, and updating of configuration
 // - Uses Deno KV for persistent storage
 // - Implements logging for configuration operations
@@ -11,8 +10,11 @@ import * as log from '@std/log';
 import { ensureDir } from '@std/fs';
 import { join } from '@std/path';
 
-// ConfigurationError
-// - Custom error class for configuration-related errors
+/**
+ * Custom error class for configuration-related errors.
+ *
+ * See errors.ts for usage in error handling.
+ */
 class ConfigurationError extends Error {
 	constructor(message: string) {
 		super(message);
@@ -26,11 +28,14 @@ class ConfigurationError extends Error {
 let kv: Deno.Kv | null = null;
 let logger: log.Logger | null = null;
 
-// defaultConfig
-// - Default configuration object
-// - Used when initializing the configuration
-// - Contains non-functional example values
-// - Must be overridden with valid data before use by using: deno task kv:setup
+/**
+ * Default configuration object.
+ * Used when initializing the configuration.
+ * Contains non-functional example values.
+ * Must be overridden with valid data before use by using: deno task kv:setup
+ *
+ * See scripts/kv_setup.ts for setting up the configuration.
+ */
 export const defaultConfig: z.infer<typeof ConfigSchema> = {
 	DID: 'did:plc:7iza6de2dwap2sbkpav7c6c6',
 	SIGNING_KEY: 'K8ej1iNr0qpOT5RQZzA7/nMx2+4dFgYuCVbL3PwcJaU',
@@ -40,13 +45,17 @@ export const defaultConfig: z.infer<typeof ConfigSchema> = {
 	BSKY_HANDLE: 'default.handle',
 	BSKY_PASSWORD: 'default_password',
 	BSKY_URL: 'https://bsky.social',
+	PORT: 1024,
 };
 
-// getConfigFromKV
-// - Retrieves configuration from KV store
-// - Falls back to placeholder values if not set
-// - Parses and validates config using ConfigSchema
-// - Returns placeholder config in test environment
+/**
+ * Retrieves configuration from KV store.
+ * Falls back to placeholder values if not set.
+ * Parses and validates config using ConfigSchema.
+ * Returns placeholder config in test environment.
+ *
+ * See schemas.ts for ConfigSchema definition.
+ */
 async function getConfigFromKV(): Promise<z.infer<typeof ConfigSchema>> {
 	if (Deno.env.get('DENO_ENV') === 'test') {
 		return defaultConfig;
@@ -76,17 +85,23 @@ async function getConfigFromKV(): Promise<z.infer<typeof ConfigSchema>> {
 	return ConfigSchema.parse(config);
 }
 
-// CONFIG
-// - Exported configuration object
-// - Initialized during application startup
+/**
+ * Exported configuration object.
+ * Initialized during application startup.
+ */
 export let CONFIG: z.infer<typeof ConfigSchema>;
 
-// setConfigValue
-// - Updates a single configuration value
-// - Validates entire config after update
-// - Persists change to KV store
+/**
+ * Updates a single configuration value.
+ * Validates entire config after update.
+ * Persists change to KV store.
+ *
+ * @param key - The configuration key to update.
+ * @param value - The new value for the configuration key.
+ * @throws {ConfigurationError} If CONFIG is not initialized or KV store is not available.
+ */
 export async function setConfigValue<
-	K extends keyof z.infer<typeof ConfigSchema>,
+	K extends keyof z.infer<typeof ConfigSchema>
 >(
 	key: K,
 	value: z.infer<typeof ConfigSchema>[K],
@@ -107,11 +122,12 @@ export async function setConfigValue<
 	logger?.info(`Config value set: ${key} = ${logValue}`);
 }
 
-// initializeConfig
-// - Initializes KV store, logger, and configuration
-// - Sets up log file and handlers
-// - Populates KV store with placeholder values if empty
-// - Retrieves and validates full configuration
+/**
+ * Initializes KV store, logger, and configuration.
+ * Sets up log file and handlers.
+ * Populates KV store with placeholder values if empty.
+ * Retrieves and validates full configuration.
+ */
 export async function initializeConfig(): Promise<void> {
 	if (!kv) {
 		kv = await Deno.openKv();
@@ -164,9 +180,10 @@ export async function initializeConfig(): Promise<void> {
 	logger.info('Config initialization complete');
 }
 
-// closeConfig
-// - Closes and cleans up resources
-// - Destroys log handlers and closes KV store
+/**
+ * Closes and cleans up resources.
+ * Destroys log handlers and closes KV store.
+ */
 export async function closeConfig(): Promise<void> {
 	if (logger) {
 		for (const handler of logger.handlers) {

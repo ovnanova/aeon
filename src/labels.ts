@@ -1,9 +1,14 @@
-// labels.ts
-// - Defines the source of truth for available labels
+/**
+ * Label definitions for ÆON
+ *
+ * This module defines the source of truth for available labels.
+ */
 
-// LABELS
-// - Readonly array of Label objects that are validated against the schema
-// - Each label is comprised of rkey, identifier, and category
+/**
+ * Readonly array of Label objects that are validated against the schema.
+ * Each label is comprised of rkey, identifier, and category.
+ */
+
 export const LABELS = [
 	{
 		rkey: '3jzfcijpj2z2b',
@@ -51,7 +56,7 @@ export const LABELS = [
 		category: 'stcr',
 	},
 	{
-		rkey: '3jzfcijpj2z2c',
+		rkey: 'self',
 		identifier: 'drmr',
 		category: 'drmr',
 	},

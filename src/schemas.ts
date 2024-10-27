@@ -1,4 +1,3 @@
-// schemas.ts
 // - Defines all Zod schemas for data validation
 // - Includes schemas for Rkey, Did, SigningKey, LabelIdentifier, LabelCategory, Label, and Config
 // - Provides type definitions derived from schemas
@@ -8,35 +7,43 @@
 import { z } from 'zod';
 import { LABELS } from './labels.ts';
 
-// RkeySchema (aka TID)
-// - 13-character string
-// - lowercase ASCII: a-z, 2-7 (no 0189)
-// - represents a 64-bit integer, big-endian byte ordering
-// - encoded as base32-sortable
+/**
+ * RkeySchema (aka TID)
+ * - 13-character string
+ * - lowercase ASCII: a-z, 2-7 (no 0189)
+ * - represents a 64-bit integer, big-endian byte ordering
+ * - encoded as base32-sortable
+ */
 export const RkeySchema = z.union([
 	z.string().length(13).regex(/^[a-z2-7]{13}$/),
 	z.literal('self'),
 ]);
 
-// DidSchema
-// - 32-character string (including "did:plc:")
-// - lowercase ASCII: a-z, 2-7, and : (no 0189)
-// - identifier derived from genesis operation hash
-// - last 24 characters are encoded as standard base32
+/**
+ * DidSchema
+ * - 32-character string (including "did:plc:")
+ * - lowercase ASCII: a-z, 2-7, and : (no 0189)
+ * - identifier derived from genesis operation hash
+ * - last 24 characters are encoded as standard base32
+ */
 export const DidSchema = z.string()
 	.regex(/^did:plc:[a-z2-7]{24}$/);
 
-// SigningKeySchema
-// - 43-character string
-// - standard Base64 alphabet only (A-Z, a-z, 0-9, +, /)
-// - Represents a 256-bit (32-byte) cryptographic key
-// - Encoded as standard base64 (no padding)
+/**
+ * SigningKeySchema
+ * - 43-character string
+ * - standard Base64 alphabet only (A-Z, a-z, 0-9, +, /)
+ * - Represents a 256-bit (32-byte) cryptographic key
+ * - Encoded as standard base64 (no padding)
+ */
 export const SigningKeySchema = z.string().regex(/^[A-Za-z0-9+/]{43}$/);
 
-// ConfigSchema
-// - object with DID, SIGNING_KEY, and other configuration fields
-// - all fields are required
-// - strict object (no additional properties allowed)
+/**
+ * ConfigSchema
+ * - object with DID, SIGNING_KEY, and other configuration fields
+ * - all fields are required
+ * - strict object (no additional properties allowed)
+ */
 export const ConfigSchema = z.object({
 	DID: DidSchema,
 	SIGNING_KEY: SigningKeySchema,
@@ -46,21 +53,29 @@ export const ConfigSchema = z.object({
 	BSKY_HANDLE: z.string().min(1),
 	BSKY_PASSWORD: z.string().min(1),
 	BSKY_URL: z.string().url(),
+	PORT: z.number().int().min(1024),
 }).strict();
 
-// LabelIdentifierSchema
-// - Enumeration of all valid label identifiers
+/**
+ * LabelIdentifierSchema
+ * - Enumeration of all valid label identifiers
+ */
 export const LabelIdentifierSchema = z.enum(
 	LABELS.map((label) => label.identifier) as [string, ...string[]],
 );
 
-// LabelCategorySchema
-// - Enumeration of all valid label categories
+/**
+ * LabelCategorySchema
+ * - Enumeration of all valid label categories
+ */
 export const LabelCategorySchema = z.enum(
 	LABELS.map((label) => label.category) as [string, ...string[]],
 );
-// LabelSchema
-// - Object schema for a label, including rkey, identifier, and category
+
+/**
+ * LabelSchema
+ * - Object schema for a label, including rkey, identifier, and category
+ */
 export const LabelSchema = z.object({
 	rkey: RkeySchema,
 	identifier: LabelIdentifierSchema,
@@ -76,8 +91,12 @@ export type LabelCategory = z.infer<typeof LabelCategorySchema>;
 export type Label = z.infer<typeof LabelSchema>;
 export type Config = z.infer<typeof ConfigSchema>;
 
-// CATEGORIES
-// - object with Category keys and values
+/**
+ * CATEGORIES
+ * Object with Category keys and values
+ *
+ * See labels.ts for the source of label categories.
+ */
 export const CATEGORIES: Record<LabelCategory, LabelCategory> = Object
 	.fromEntries(
 		LabelCategorySchema.options.map((

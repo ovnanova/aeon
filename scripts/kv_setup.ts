@@ -21,6 +21,7 @@ async function validateAndSetConfig() {
 		BSKY_HANDLE: 'test.bsky.social',
 		BSKY_PASSWORD: 'this-is-an-app-password',
 		BSKY_URL: 'https://bsky.social',
+		PORT: 1024,
 	};
 
 	try {
