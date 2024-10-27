@@ -1,30 +1,33 @@
-// main.ts
-// - Core application file for the ÆON labeler
-// - Imports necessary modules and initializes key components
-// - Sets up logging, configuration, and Deno KV store
-// - Manages ATP agent, Aeon instance, and Jetstream connection
-// - Handles cursor initialization and updates
-// - Implements error handling and graceful shutdown
+/**
+ * Core application file for ÆON
+ *
+ * - Imports necessary modules and initializes key components
+ * - Sets up logging, configuration, and Deno KV store
+ * - Manages ATP agent, Aeon instance, and Jetstream connection
+ * - Handles cursor initialization and updates
+ * - Implements error handling and graceful shutdown
+ */
 
 import { AtpAgent } from 'atproto';
 import { Jetstream } from 'jetstream';
 import { Aeon } from './aeon.ts';
-import { CONFIG, initializeConfig } from './config.ts';
+import { closeConfig, CONFIG, initializeConfig } from './config.ts';
 import { DidSchema, RkeySchema } from './schemas.ts';
 import { verifyKvStore } from '../scripts/kv_utils.ts';
+import { AtpError, JetstreamError } from './errors.ts';
 import * as log from '@std/log';
 
-// Global constants
-// - kv: Deno key-value store instance
-// - logger: Logging instance from @std/log
 const kv = await Deno.openKv();
 const logger = log.getLogger();
 
-// main function
-// - Asynchronous function orchestrating the application
-// - Initializes config, verifies KV store
-// - Sets up ATP agent, Aeon, and Jetstream
-// - Manages login, cursor, listeners, and shutdown handlers
+/**
+ * Main function orchestrating the application.
+ * Initializes config, verifies KV store, sets up ATP agent, Aeon, and Jetstream.
+ * Manages login, cursor, listeners, and shutdown handlers.
+ *
+ * @throws {AtpError} If ATP initialization or login fails
+ * @throws {JetstreamError} If Jetstream connection fails
+ */
 async function main() {
 	try {
 		await initializeConfig();
@@ -37,51 +40,71 @@ async function main() {
 		const aeon = await Aeon.create();
 
 		if (!CONFIG.BSKY_HANDLE || !CONFIG.BSKY_PASSWORD) {
-			throw new Error(
+			throw new AtpError(
 				'BSKY_HANDLE and BSKY_PASSWORD must be set in the configuration',
 			);
 		}
 
-		await agent.login({
-			identifier: CONFIG.BSKY_HANDLE,
-			password: CONFIG.BSKY_PASSWORD,
-		});
-		logger.info('Logged in to ATP successfully');
+		try {
+			await agent.login({
+				identifier: CONFIG.BSKY_HANDLE,
+				password: CONFIG.BSKY_PASSWORD,
+			});
+			logger.info('Logged in to ATP successfully');
+		} catch (error) {
+			if (error instanceof Error) {
+				throw new AtpError(`ATP login failed: ${error.message}`);
+			} else {
+				throw new AtpError('ATP login failed: Unknown error');
+			}
+		}
 
 		await aeon.init();
 
 		const cursor = await initializeCursor();
 
-		if (!CONFIG.COLLECTION) {
-			throw new Error('COLLECTION must be set in the configuration');
+		try {
+			const jetstream = new Jetstream({
+				wantedCollections: [CONFIG.COLLECTION],
+				endpoint: CONFIG.JETSTREAM_URL,
+				cursor: cursor,
+			});
+
+			setupJetstreamListeners(jetstream, aeon);
+
+			jetstream.start();
+			logger.info('Jetstream started');
+
+			setupCursorUpdateInterval(jetstream);
+			setupShutdownHandlers(aeon, jetstream);
+		} catch (error) {
+			if (error instanceof Error) {
+				throw new JetstreamError(
+					`Jetstream initialization failed: ${error.message}`,
+				);
+			} else {
+				throw new JetstreamError(
+					'Jetstream initialization failed: Unknown error',
+				);
+			}
 		}
-
-		const jetstream = new Jetstream({
-			wantedCollections: [CONFIG.COLLECTION],
-			endpoint: CONFIG.JETSTREAM_URL,
-			cursor: cursor,
-		});
-
-		setupJetstreamListeners(jetstream, aeon);
-
-		jetstream.start();
-		logger.info('Jetstream started');
-
-		setupCursorUpdateInterval(jetstream);
-		setupShutdownHandlers(jetstream);
 	} catch (error) {
-		logger.error(
-			`Error in main: ${
-				error instanceof Error ? error.message : String(error)
-			}`,
-		);
+		if (error instanceof AtpError || error instanceof JetstreamError) {
+			logger.error(`Error in main: ${error.message}`);
+		} else {
+			logger.error(`Error in main: ${String(error)}`);
+		}
 		Deno.exit(1);
 	}
 }
 
-// initializeCursor function
-// - Retrieves or sets initial cursor value in KV store
-// - Returns cursor as a number (microseconds since epoch)
+/**
+ * Initializes or retrieves the cursor value from the KV store.
+ * The cursor represents a point in time (in microseconds) from which
+ * to start processing events.
+ *
+ * @returns The cursor value in microseconds since epoch
+ */
 async function initializeCursor(): Promise<number> {
 	const cursorResult = await kv.get(['cursor']);
 	if (cursorResult.value === null) {
@@ -102,10 +125,14 @@ async function initializeCursor(): Promise<number> {
 	}
 }
 
-// setupJetstreamListeners function
-// - Sets up event listeners for Jetstream
-// - Handles 'open', 'close', and 'error' events
-// - Processes 'create' events for specified collection
+/**
+ * Sets up event listeners for Jetstream.
+ * Handles 'open', 'close', and 'error' events.
+ * Processes 'create' events for the specified collection.
+ *
+ * @param jetstream - The Jetstream instance
+ * @param aeon - The Aeon instance
+ */
 function setupJetstreamListeners(jetstream: Jetstream, aeon: Aeon) {
 	jetstream.on('open', () => {
 		logger.info(
@@ -114,7 +141,7 @@ function setupJetstreamListeners(jetstream: Jetstream, aeon: Aeon) {
 	});
 
 	jetstream.on('close', () => {
-		logger.info('Jetstream connection closed.');
+		logger.info('Jetstream connection closed');
 	});
 
 	jetstream.on('error', (error: Error) => {
@@ -127,11 +154,11 @@ function setupJetstreamListeners(jetstream: Jetstream, aeon: Aeon) {
 				const validatedDID = DidSchema.parse(event.did);
 				const rkey = event.commit.record.subject.uri.split('/').pop()!;
 				const validatedRkey = RkeySchema.parse(rkey);
-				await aeon.assignLabel(validatedDID, validatedRkey);
+				await aeon.assignOrUpdateLabel(validatedDID, validatedRkey);
 			} catch (error) {
 				logger.error(
 					`Error processing event: ${
-						error instanceof Error ? error.message : String(error)
+						error instanceof JetstreamError ? error.message : String(error)
 					}`,
 				);
 			}
@@ -139,9 +166,12 @@ function setupJetstreamListeners(jetstream: Jetstream, aeon: Aeon) {
 	});
 }
 
-// setupCursorUpdateInterval function
-// - Periodically updates cursor value in KV store
-// - Uses interval specified in configuration
+/**
+ * Sets up an interval to periodically update the cursor value in the KV store.
+ * This ensures we can resume from the last processed event after a restart.
+ *
+ * @param jetstream - The Jetstream instance to get the cursor from
+ */
 function setupCursorUpdateInterval(jetstream: Jetstream) {
 	setInterval(async () => {
 		if (jetstream.cursor) {
@@ -155,13 +185,20 @@ function setupCursorUpdateInterval(jetstream: Jetstream) {
 	}, CONFIG.CURSOR_INTERVAL);
 }
 
-// setupShutdownHandlers function
-// - Sets up handlers for SIGINT and SIGTERM signals
-// - Ensures graceful shutdown of Jetstream connection
-function setupShutdownHandlers(jetstream: Jetstream) {
-	const shutdown = () => {
+/**
+ * Sets up handlers for SIGINT and SIGTERM signals to ensure graceful shutdown.
+ * Closes all connections and cleans up resources before exiting.
+ *
+ * @param aeon - The Aeon instance to shut down
+ * @param jetstream - The Jetstream instance to close
+ */
+function setupShutdownHandlers(aeon: Aeon, jetstream: Jetstream) {
+	const shutdown = async () => {
 		logger.info('Shutting down...');
+		await aeon.shutdown();
 		jetstream.close();
+		await closeConfig();
+		kv.close();
 		Deno.exit(0);
 	};
 
@@ -170,7 +207,6 @@ function setupShutdownHandlers(jetstream: Jetstream) {
 }
 
 // Main execution
-// - Runs the main function and handles any unhandled errors
 main().catch((error) => {
 	logger.critical(
 		`Unhandled error in main: ${

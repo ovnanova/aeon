@@ -9,18 +9,7 @@ import { ConfigSchema } from './schemas.ts';
 import * as log from '@std/log';
 import { ensureDir } from '@std/fs';
 import { join } from '@std/path';
-
-/**
- * Custom error class for configuration-related errors.
- *
- * See errors.ts for usage in error handling.
- */
-class ConfigurationError extends Error {
-	constructor(message: string) {
-		super(message);
-		this.name = 'ConfigurationError';
-	}
-}
+import { ConfigurationError } from './errors.ts';
 
 // Global variables
 // - kv: Deno KV store instance
@@ -101,7 +90,7 @@ export let CONFIG: z.infer<typeof ConfigSchema>;
  * @throws {ConfigurationError} If CONFIG is not initialized or KV store is not available.
  */
 export async function setConfigValue<
-	K extends keyof z.infer<typeof ConfigSchema>
+	K extends keyof z.infer<typeof ConfigSchema>,
 >(
 	key: K,
 	value: z.infer<typeof ConfigSchema>[K],
