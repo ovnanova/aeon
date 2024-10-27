@@ -22,9 +22,12 @@
 		"kv:setup": "deno run --allow-read --allow-write --allow-env --unstable-kv scripts/kv_setup.ts",
 		"assign_label": "deno run --unstable-kv --allow-net --allow-read --allow-write --allow-env --allow-ffi --allow-sys=hostname scripts/assign_label.ts",
 		"remove_label": "deno run --unstable-kv --allow-net --allow-read --allow-write --allow-env --allow-ffi --allow-sys=hostname scripts/remove_label.ts",
+		"metrics": "deno run --allow-read --allow-write --unstable-kv scripts/kv_cli.ts metrics",
+    	"metrics:clear": "deno run --allow-read --allow-write --unstable-kv scripts/kv_cli.ts metrics:clear",
 		"test": "DENO_ENV=test deno test --unstable-kv --allow-read=. --allow-write=logs --allow-env --allow-sys --allow-ffi --coverage tests/*",
 		"test:config": "DENO_ENV=test deno test --unstable-kv --allow-read=. --allow-write=logs --allow-env --allow-sys --coverage tests/config_test.ts",
 		"test:labeler": "DENO_ENV=test deno test --unstable-kv --allow-read=. --allow-write=logs --allow-env --allow-sys --allow-ffi --coverage tests/labeler_test.ts",
+		"test:metrics": "DENO_ENV=test deno test --unstable-kv --allow-read=. --allow-write=logs --allow-env --allow-sys --allow-ffi --coverage tests/metrics_test.ts",
 		"test:schema": "DENO_ENV=test deno test --unstable-kv --allow-read=. --allow-write=logs --allow-env --allow-sys --coverage tests/schema_test.ts",
 		"fmt": "deno fmt src scripts tests",
 		"lint": "deno lint src scripts tests"

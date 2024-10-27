@@ -16,9 +16,12 @@ import { Aeon } from '../src/aeon.ts';
 import { initializeConfig } from '../src/config.ts';
 import { DidSchema, LabelIdentifierSchema } from '../src/schemas.ts';
 import * as log from '@std/log';
+import { MetricsTracker } from '../src/metrics.ts';
 
 await initLogging();
+const kv = await Deno.openKv();
 const logger = log.getLogger();
+const metrics = new MetricsTracker(kv);
 
 async function removeLabel() {
 	if (Deno.args.length !== 2) {
@@ -40,7 +43,7 @@ async function removeLabel() {
 
 		logger.info('Initializing Aeon...', { did, labelIdentifier });
 		await initializeConfig();
-		const aeon = await Aeon.create();
+		const aeon = await Aeon.create(metrics);
 		await aeon.init();
 
 		logger.info('Removing label...', { did, labelIdentifier });

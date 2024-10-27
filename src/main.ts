@@ -16,9 +16,11 @@ import { DidSchema, RkeySchema } from './schemas.ts';
 import { verifyKvStore } from '../scripts/kv_utils.ts';
 import { AtpError, JetstreamError } from './errors.ts';
 import * as log from '@std/log';
+import { MetricsTracker } from './metrics.ts';
 
 const kv = await Deno.openKv();
 const logger = log.getLogger();
+const metrics = new MetricsTracker(kv);
 
 /**
  * Main function orchestrating the application.
@@ -37,7 +39,7 @@ async function main() {
 		logger.info('KV store verified successfully');
 
 		const agent = new AtpAgent({ service: CONFIG.BSKY_URL });
-		const aeon = await Aeon.create();
+		const aeon = await Aeon.create(metrics);
 
 		if (!CONFIG.BSKY_HANDLE || !CONFIG.BSKY_PASSWORD) {
 			throw new AtpError(
