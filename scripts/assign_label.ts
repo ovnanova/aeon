@@ -1,56 +1,61 @@
-// assign_label.ts
-// - Script for manually assigning labels to accounts
-// - The script handles both new assignments and updates
-// - This script takes two command-line arguments:
-//   1. DID of the account to be labeled
-//   2. Label identifier of the label to be assigned
-// Example usage:
-// deno task assign_label did:plc:exampleuser123 fklr
+/**
+ * Label Assignment script for ÆON
+ * Manually assigns labels to accounts.
+ *
+ * Usage: deno task assign_label <did> <label_identifier>
+ * Example: deno task assign_label did:plc:example123 adlr
+ *
+ * Parameters:
+ * - did: The DID of the account to label
+ * - label_identifier: The identifier of the label to assign
+ *   Valid identifiers: adlr, arar, eulr, fklr, klbr, lstr, mnhr, star, stcr
+ */
 
+import { initLogging } from '../src/logger.ts';
 import { Aeon } from '../src/aeon.ts';
 import { initializeConfig } from '../src/config.ts';
 import { DidSchema, LabelIdentifierSchema } from '../src/schemas.ts';
-import { LABELS } from '../src/labels.ts';
+import * as log from '@std/log';
+
+await initLogging();
+const logger = log.getLogger();
 
 async function assignLabel() {
-	// Check if the correct number of arguments is provided
 	if (Deno.args.length !== 2) {
+		logger.error('Invalid arguments', {
+			expected: 'did label_identifier',
+			received: Deno.args.join(' '),
+		});
 		console.error('Usage: deno task assign_label <did> <label_identifier>');
+		console.error('Example: deno task assign_label did:plc:example123 adlr');
 		Deno.exit(1);
 	}
 
 	const [did, labelIdentifier] = Deno.args;
 
-	// Validate DID and label identifier using schemas
 	try {
+		// Validate inputs
 		DidSchema.parse(did);
 		LabelIdentifierSchema.parse(labelIdentifier);
+
+		logger.info('Initializing Aeon...', { did, labelIdentifier });
+		await initializeConfig();
+		const aeon = await Aeon.create();
+		await aeon.init();
+
+		logger.info('Assigning label...', { did, labelIdentifier });
+		await aeon.assignOrUpdateLabel(did, labelIdentifier);
+		logger.info('Label assigned successfully', { did, labelIdentifier });
 	} catch (error) {
-		if (error instanceof Error) {
-			console.error('Invalid DID or label identifier:', error.message);
-		}
-		Deno.exit(1);
-	}
-
-	// Find the corresponding label for the given label identifier
-	const label = LABELS.find((l) => l.identifier === labelIdentifier);
-	if (!label) {
-		console.error(`No matching label found for identifier: ${labelIdentifier}`);
-		Deno.exit(1);
-	}
-
-	// Initialize configuration and create Aeon instance
-	await initializeConfig();
-	const aeon = await Aeon.create();
-	await aeon.init();
-
-	// Attempt to assign the label
-	try {
-		await aeon.assignOrUpdateLabel(did, label.rkey);
-	} catch (error) {
-		if (error instanceof Error) {
-			console.error('Error assigning label:', error.message);
-		}
+		logger.error('Failed to assign label', {
+			did,
+			labelIdentifier,
+			error: error instanceof Error ? error.message : String(error),
+		});
+		console.error(
+			'Error:',
+			error instanceof Error ? error.message : String(error),
+		);
 		Deno.exit(1);
 	}
 }

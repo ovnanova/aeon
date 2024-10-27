@@ -1,16 +1,20 @@
-// kv_cli.ts
-// - Command-line interface for managing the Deno KV store
-// - Provides functions for listing, getting, setting, updating, and deleting KV pairs
-// - Implements input validation and error handling
-// - Masks sensitive values when displayed
-
-import { ConfigSchema, SigningKeySchema } from '../src/schemas.ts';
+/**
+ * CLI utility for managing the Deno KV store
+ * Provides commands for configuration and metrics management.
+ */
+import { ConfigSchema } from '../src/schemas.ts';
 import { z } from 'zod';
+import * as log from '@std/log';
 
 const kv = await Deno.openKv();
+const logger = log.getLogger();
 
-// validateKeyValue
-// - Validates a key-value pair against the ConfigSchema
+/**
+ * Validates a key-value pair against schema
+ * @param key KV key to validate
+ * @param value Value to validate
+ * @throws {Error} If validation fails
+ */
 function validateKeyValue(key: Deno.KvKey, value: unknown): void {
 	if (key[0] !== 'config' || key.length !== 2 || typeof key[1] !== 'string') {
 		throw new Error(
@@ -38,168 +42,166 @@ function validateKeyValue(key: Deno.KvKey, value: unknown): void {
 	}
 }
 
-// listKeys
-// - Lists all keys and their values in the KV store
-// - Call this function by using: deno task kv:list
-async function listKeys() {
+/**
+ * Lists all keys and values in the KV store
+ */
+async function listKeys(): Promise<void> {
 	const iter = kv.list({ prefix: ['config'] });
 	for await (const entry of iter) {
 		const key = entry.key.join(':');
 		let value = entry.value;
 
 		if (entry.key[1] === 'SIGNING_KEY' || entry.key[1] === 'BSKY_PASSWORD') {
-			value = maskSensitiveValue(entry.key, value);
+			value = maskSensitiveValue(value);
 		}
 
-		console.log(`Key: ${key}, Value: ${JSON.stringify(value)}`);
+		logger.info(`Key: ${key}, Value: ${JSON.stringify(value)}`);
 	}
 }
 
-// getValue
-// - Retrieves and displays the value for a given key
-// - Call this function by using: deno task kv:get config <KEY>
-async function getValue(key: Deno.KvKey) {
-	if (key[0] !== 'config' || key.length !== 2) {
-		throw new Error(
-			'Invalid key structure. Expected ["config", "<CONFIG_KEY>"]',
-		);
-	}
-
+/**
+ * Gets value for a specific key
+ * @param key KV key to retrieve
+ */
+async function getValue(key: Deno.KvKey): Promise<void> {
 	const result = await kv.get(key);
 	let value = result.value;
 
 	if (value === null) {
-		console.log(`No value found for key ${key.join(':')}`);
+		logger.info(`No value found for key ${key.join(':')}`);
 		return;
 	}
 
 	if (key[1] === 'SIGNING_KEY' || key[1] === 'BSKY_PASSWORD') {
-		value = maskSensitiveValue(key, value);
+		value = maskSensitiveValue(value);
 	}
 
-	console.log(`Value for key ${key.join(':')}: ${JSON.stringify(value)}`);
+	logger.info(`Value for key ${key.join(':')}: ${JSON.stringify(value)}`);
 }
 
-// setValue
-// - Sets a value for a given key after validation
-// - Call this function by using: deno task kv:set config <KEY> <value>
-async function setValue(key: Deno.KvKey, value: unknown) {
+/**
+ * Sets value for a specific key
+ * @param key KV key to set
+ * @param value Value to store
+ */
+async function setValue(key: Deno.KvKey, value: unknown): Promise<void> {
 	validateKeyValue(key, value);
 	await kv.set(key, value);
-	console.log(`Set value for key ${key.join(':')}: ${JSON.stringify(value)}`);
+	logger.info(`Set value for key ${key.join(':')}: ${JSON.stringify(value)}`);
 }
 
-// updateValue
-// - Updates a value for a given key after validation
-// - Call this function by using: deno task kv:update config <KEY> <value>
-async function updateValue(key: Deno.KvKey, value: unknown) {
-	validateKeyValue(key, value);
-	await kv.set(key, value);
-	console.log(
-		`Updated value for key ${key.join(':')}: ${JSON.stringify(value)}`,
-	);
-}
-
-// deleteKey
-// - Deletes a key-value pair from the KV store
-// - Call this function by using: deno task kv:delete config <KEY>
-async function deleteKey(key: Deno.KvKey) {
-	if (key[0] !== 'config' || key.length !== 2 || typeof key[1] !== 'string') {
-		throw new Error(
-			'Invalid key structure. Expected ["config", "<CONFIG_KEY>"]',
-		);
-	}
-
-	const configKey = key[1] as keyof z.infer<typeof ConfigSchema>;
-	if (!(configKey in ConfigSchema.shape)) {
-		throw new Error(`Invalid config key: ${configKey}`);
-	}
-
+/**
+ * Deletes a specific key
+ * @param key KV key to delete
+ */
+async function deleteKey(key: Deno.KvKey): Promise<void> {
 	await kv.delete(key);
-	console.log(`Deleted key ${key.join(':')}`);
+	logger.info(`Deleted key ${key.join(':')}`);
 }
 
-// wipeStore
-// - Removes all key-value pairs from the KV store
-// - Call this function by using: deno task kv:wipe
-async function wipeStore() {
+/**
+ * Wipes all data from the KV store
+ */
+async function wipeStore(): Promise<void> {
 	const iter = kv.list({ prefix: ['config'] });
 	for await (const entry of iter) {
 		await kv.delete(entry.key);
 	}
-	console.log('KV store wiped');
+	logger.info('KV store wiped');
 }
 
-// maskSensitiveValue
-// - Masks sensitive values when displayed in the CLI
-function maskSensitiveValue(key: Deno.KvKey, value: unknown): string {
-	if (typeof value !== 'string') {
-		return '[INVALID]';
-	}
+/**
+ * Handles metrics commands
+ * @param command The metrics command to execute
+ */
+async function handleMetrics(command: string): Promise<void> {
+	switch (command) {
+		case 'metrics': {
+			const metrics = await kv.get(['metrics', 'labels']);
+			if (metrics.value) {
+				logger.info('Label Metrics:', metrics.value);
+			} else {
+				logger.info('No metrics data found');
+			}
+			break;
+		}
 
-	if (key[1] === 'SIGNING_KEY') {
-		return SigningKeySchema.safeParse(value).success ? '[VALID]' : '[INVALID]';
-	}
+		case 'metrics:clear': {
+			await kv.delete(['metrics', 'labels']);
+			logger.info('Metrics cleared successfully');
+			break;
+		}
 
-	if (key[1] === 'BSKY_PASSWORD') {
-		return value.length > 0 ? '[SET]' : '[NOT SET]';
+		default:
+			throw new Error(`Unknown metrics command: ${command}`);
 	}
-
-	return value;
 }
 
-// main
-// - Parses command-line arguments and executes the appropriate function
+/**
+ * Masks sensitive values for display
+ * @param value Value to mask
+ * @returns Masked string
+ */
+function maskSensitiveValue(value: unknown): string {
+	if (typeof value !== 'string') return '[INVALID]';
+	return '[REDACTED]';
+}
+
+/**
+ * Shows CLI help information
+ */
+function showHelp(): void {
+	console.log(
+		'Usage:\n' +
+			'  deno task kv:list              List all config keys and values\n' +
+			'  deno task kv:get <KEY>         Get value for a key\n' +
+			'  deno task kv:set <KEY> <value> Set value for a key\n' +
+			'  deno task kv:delete <KEY>      Delete a key\n' +
+			'  deno task kv:wipe              Delete all data\n' +
+			'  deno task metrics              Show metrics data\n' +
+			'  deno task metrics:clear        Clear metrics data\n',
+	);
+}
+
+/**
+ * Main CLI function
+ */
 async function main() {
 	const command = Deno.args[0];
-	const key = Deno.args.slice(1, -1) as Deno.KvKey;
-	const value = Deno.args[Deno.args.length - 1];
+	const args = Deno.args.slice(1);
 
 	try {
 		switch (command) {
 			case 'list':
 				await listKeys();
 				break;
-			case 'get': {
-				const getKey = Deno.args.slice(1) as Deno.KvKey;
-				await getValue(getKey);
+			case 'get':
+				await getValue(args as Deno.KvKey);
 				break;
-			}
 			case 'set':
-				await setValue(key, value);
-				break;
-			case 'update':
-				await updateValue(key, value);
+				await setValue(args.slice(0, -1) as Deno.KvKey, args[args.length - 1]);
 				break;
 			case 'delete':
-				await deleteKey(key);
+				await deleteKey(args as Deno.KvKey);
 				break;
 			case 'wipe':
 				await wipeStore();
 				break;
+			case 'metrics':
+			case 'metrics:clear':
+				await handleMetrics(command);
+				break;
 			default:
-				console.log(
-					'Usage:\n' +
-						'  deno task kv:list\n' +
-						'  deno task kv:get config <KEY>\n' +
-						'  deno task kv:set config <KEY> <value>\n' +
-						'  deno task kv:update config <KEY> <value>\n' +
-						'  deno task kv:delete config <KEY>\n' +
-						'  deno task kv:wipe\n\n' +
-						'Examples:\n' +
-						'  deno task kv:list\n' +
-						'  deno task kv:get config JETSTREAM_URL\n' +
-						'  deno task kv:set config JETSTREAM_URL "wss://example.com"\n' +
-						'  deno task kv:update config CURSOR_INTERVAL 10000\n' +
-						'  deno task kv:delete config COLLECTION\n' +
-						'  deno task kv:wipe',
-				);
+				showHelp();
 		}
 	} catch (error) {
-		console.error(`Error: ${(error as Error).message}`);
+		logger.error(
+			`Error: ${error instanceof Error ? error.message : String(error)}`,
+		);
+		Deno.exit(1);
+	} finally {
+		await kv.close();
 	}
 }
 
 await main();
-
-// Usage instructions are provided when running the script without arguments or with an invalid command

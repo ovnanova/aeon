@@ -1,70 +1,167 @@
-// kv_utils.ts
-// - Utility functions for interacting with Deno KV store
-// - Provides CRUD operations and additional helpers
-// - Implements KV store verification function
+/**
+ * Deno KV utility functions for ÆON
+ * Provides type-safe CRUD operations and verification utilities.
+ */
 
-// getValue
-// - Retrieves a value from the KV store by key
-export async function getValue(key: Deno.KvKey): Promise<unknown> {
-	const kv = await Deno.openKv();
-	const result = await kv.get(key);
-	return result.value;
-}
+import { KvError } from '../src/errors.ts';
+import * as log from '@std/log';
 
-// setValue
-// - Sets a value in the KV store for a given key
-export async function setValue(key: Deno.KvKey, value: unknown): Promise<void> {
-	const kv = await Deno.openKv();
-	await kv.set(key, value);
-}
+const logger = log.getLogger();
 
-// updateValue
-// - Updates a value in the KV store using a provided update function
-export async function updateValue(
-	key: Deno.KvKey,
-	updateFn: (oldValue: unknown) => unknown,
-): Promise<void> {
-	const kv = await Deno.openKv();
-	const existingEntry = await kv.get(key);
-	const newValue = updateFn(existingEntry.value);
-
-	await kv.set(key, newValue);
-}
-
-// deleteValue
-// - Deletes a value from the KV store by key
-export async function deleteValue(key: Deno.KvKey): Promise<void> {
-	const kv = await Deno.openKv();
-	await kv.delete(key);
-}
-
-// listKeys
-// - Lists all keys in the KV store with a given prefix
-export async function listKeys(prefix: Deno.KvKey): Promise<Deno.KvKey[]> {
-	const kv = await Deno.openKv();
-	const keys: Deno.KvKey[] = [];
-	const iter = kv.list({ prefix });
-	for await (const entry of iter) {
-		keys.push(entry.key);
-	}
-	return keys;
-}
-
-// verifyKvStore
-// - Verifies the KV store's functionality by performing a test operation
-export async function verifyKvStore(): Promise<boolean> {
-	const kv = await Deno.openKv();
-	const testKey: Deno.KvKey = ['test', 'key'];
-	const testValue = 'test_value';
+/**
+ * Retrieves a value from the KV store.
+ *
+ * @param key - The key to retrieve
+ * @returns The stored value, or null if not found
+ * @throws {KvError} If retrieval fails
+ */
+export async function getValue<T>(key: Deno.KvKey): Promise<T | null> {
 	try {
+		const kv = await Deno.openKv();
+		const result = await kv.get(key);
+		await kv.close();
+		return result.value as T;
+	} catch (error) {
+		logger.error(`Failed to get value for key ${key.join('/')}`, { error });
+		throw new KvError(
+			`Failed to get value for key ${key.join('/')}: ${
+				error instanceof Error ? error.message : String(error)
+			}`,
+		);
+	}
+}
+
+/**
+ * Sets a value in the KV store.
+ *
+ * @param key - The key to set
+ * @param value - The value to store
+ * @throws {KvError} If the operation fails
+ */
+export async function setValue(key: Deno.KvKey, value: unknown): Promise<void> {
+	try {
+		const kv = await Deno.openKv();
+		await kv.set(key, value);
+		await kv.close();
+		logger.debug(`Set value for key ${key.join('/')}`);
+	} catch (error) {
+		logger.error(`Failed to set value for key ${key.join('/')}`, { error });
+		throw new KvError(
+			`Failed to set value for key ${key.join('/')}: ${
+				error instanceof Error ? error.message : String(error)
+			}`,
+		);
+	}
+}
+
+/**
+ * Updates a value in the KV store using an update function.
+ *
+ * @param key - The key to update
+ * @param updateFn - Function that takes the old value and returns the new value
+ * @throws {KvError} If the update fails
+ */
+export async function updateValue<T>(
+	key: Deno.KvKey,
+	updateFn: (oldValue: T | null) => T,
+): Promise<void> {
+	try {
+		const kv = await Deno.openKv();
+		const existingEntry = await kv.get<T>(key);
+		const newValue = updateFn(existingEntry.value);
+		await kv.set(key, newValue);
+		await kv.close();
+		logger.debug(`Updated value for key ${key.join('/')}`);
+	} catch (error) {
+		logger.error(`Failed to update value for key ${key.join('/')}`, { error });
+		throw new KvError(
+			`Failed to update value for key ${key.join('/')}: ${
+				error instanceof Error ? error.message : String(error)
+			}`,
+		);
+	}
+}
+
+/**
+ * Deletes a value from the KV store.
+ *
+ * @param key - The key to delete
+ * @throws {KvError} If deletion fails
+ */
+export async function deleteValue(key: Deno.KvKey): Promise<void> {
+	try {
+		const kv = await Deno.openKv();
+		await kv.delete(key);
+		await kv.close();
+		logger.debug(`Deleted value for key ${key.join('/')}`);
+	} catch (error) {
+		logger.error(`Failed to delete value for key ${key.join('/')}`, { error });
+		throw new KvError(
+			`Failed to delete value for key ${key.join('/')}: ${
+				error instanceof Error ? error.message : String(error)
+			}`,
+		);
+	}
+}
+
+/**
+ * Lists all keys with a given prefix.
+ *
+ * @param prefix - The key prefix to list
+ * @returns Array of matching keys
+ * @throws {KvError} If listing fails
+ */
+export async function listKeys(prefix: Deno.KvKey): Promise<Deno.KvKey[]> {
+	try {
+		const kv = await Deno.openKv();
+		const keys: Deno.KvKey[] = [];
+		const iter = kv.list({ prefix });
+		for await (const entry of iter) {
+			keys.push(entry.key);
+		}
+		await kv.close();
+		return keys;
+	} catch (error) {
+		logger.error(`Failed to list keys with prefix ${prefix.join('/')}`, {
+			error,
+		});
+		throw new KvError(
+			`Failed to list keys with prefix ${prefix.join('/')}: ${
+				error instanceof Error ? error.message : String(error)
+			}`,
+		);
+	}
+}
+
+/**
+ * Verifies KV store functionality with a test operation.
+ *
+ * @returns true if verification succeeds
+ * @throws {KvError} If verification fails
+ */
+export async function verifyKvStore(): Promise<boolean> {
+	const testKey: Deno.KvKey = ['test', crypto.randomUUID()];
+	const testValue = 'test_value';
+
+	try {
+		const kv = await Deno.openKv();
 		await kv.set(testKey, testValue);
 		const result = await kv.get(testKey);
 		await kv.delete(testKey);
-		return result.value === testValue;
+		await kv.close();
+
+		if (result.value !== testValue) {
+			throw new Error('Value mismatch in verification');
+		}
+
+		logger.info('KV store verification successful');
+		return true;
 	} catch (error) {
-		console.error('KV store verification failed:', error);
-		return false;
-	} finally {
-		kv.close();
+		logger.error('KV store verification failed', { error });
+		throw new KvError(
+			`KV store verification failed: ${
+				error instanceof Error ? error.message : String(error)
+			}`,
+		);
 	}
 }
