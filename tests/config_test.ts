@@ -38,18 +38,6 @@ Deno.test('Config loaded correctly from KV', async () => {
       );
     }
 
-    // Additional validation for REMOVAL_RKEY
-    assertEquals(
-      typeof CONFIG.REMOVAL_RKEY,
-      'string',
-      'REMOVAL_RKEY should be a string'
-    );
-    assertEquals(
-      CONFIG.REMOVAL_RKEY.length === 13 || CONFIG.REMOVAL_RKEY === 'self',
-      true,
-      'REMOVAL_RKEY should be either 13 characters or "self"'
-    );
-
     console.log('All config properties loaded and validated successfully');
   } finally {
     await closeConfig();

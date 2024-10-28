@@ -165,9 +165,11 @@ export class Aeon {
 	 * Retrieves the current label state for a given DID.
 	 * 
 	 * @param did - The DID to check
+	 * @returns Current label value and negation state, or null if no label exists
 	 */
 	private async getCurrentLabel(
 		did: string,
+	): Promise<{ val: string; neg: boolean } | null> {
 		try {
 			const query = await this.labelerServer.db.prepare(`
 				SELECT val, neg FROM labels
