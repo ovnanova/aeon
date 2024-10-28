@@ -3,33 +3,55 @@ import { ConfigSchema } from '../src/schemas.ts';
 import { closeConfig, CONFIG, initializeConfig } from '../src/config.ts';
 
 Deno.test('Config loaded correctly from KV', async () => {
-	try {
-		await initializeConfig();
+  try {
+    await initializeConfig();
 
-		// Validate the entire config object
-		const validatedConfig = ConfigSchema.parse(CONFIG);
-		assertEquals(
-			Object.keys(validatedConfig).length,
-			Object.keys(ConfigSchema.shape).length,
-			'All expected config keys should be present',
-		);
+    // Validate the entire config object
+    const validatedConfig = ConfigSchema.parse(CONFIG);
+    assertEquals(
+      Object.keys(validatedConfig).length,
+      Object.keys(ConfigSchema.shape).length,
+      'All expected config keys should be present',
+    );
 
-		// Check that all required properties exist and are of the correct type
-		for (const [key, value] of Object.entries(ConfigSchema.shape)) {
-			assertExists(CONFIG[key as keyof typeof CONFIG], `${key} should exist`);
-			assertEquals(
-				typeof CONFIG[key as keyof typeof CONFIG],
-				value._def.typeName === 'ZodString'
-					? 'string'
-					: value._def.typeName === 'ZodNumber'
-					? 'number'
-					: 'unknown',
-				`${key} should be of the correct type`,
-			);
-		}
+    // Check that all required properties exist and are of the correct type
+    for (const [key, value] of Object.entries(ConfigSchema.shape)) {
+      assertExists(CONFIG[key as keyof typeof CONFIG], `${key} should exist`);
 
-		console.log('All config properties loaded and validated successfully');
-	} finally {
-		await closeConfig();
-	}
+      const expectedType = (() => {
+        switch (value._def.typeName) {
+          case 'ZodString':
+            return 'string';
+          case 'ZodNumber':
+            return 'number';
+          case 'ZodUnion':
+            return 'string';
+          default:
+            return 'unknown';
+        }
+      })();
+
+      assertEquals(
+        typeof CONFIG[key as keyof typeof CONFIG],
+        expectedType,
+        `${key} should be of the correct type`
+      );
+    }
+
+    // Additional validation for REMOVAL_RKEY
+    assertEquals(
+      typeof CONFIG.REMOVAL_RKEY,
+      'string',
+      'REMOVAL_RKEY should be a string'
+    );
+    assertEquals(
+      CONFIG.REMOVAL_RKEY.length === 13 || CONFIG.REMOVAL_RKEY === 'self',
+      true,
+      'REMOVAL_RKEY should be either 13 characters or "self"'
+    );
+
+    console.log('All config properties loaded and validated successfully');
+  } finally {
+    await closeConfig();
+  }
 });

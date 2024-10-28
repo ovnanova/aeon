@@ -20,7 +20,6 @@ import { MetricsTracker } from './metrics.ts';
 
 const kv = await Deno.openKv();
 const logger = log.getLogger();
-const metrics = new MetricsTracker(kv);
 
 /**
  * Main function orchestrating the application.
@@ -39,7 +38,8 @@ async function main() {
 		logger.info('KV store verified successfully');
 
 		const agent = new AtpAgent({ service: CONFIG.BSKY_URL });
-		const aeon = await Aeon.create(metrics);
+		const metrics = new MetricsTracker(kv);
+		const aeon = new Aeon(metrics);
 
 		if (!CONFIG.BSKY_HANDLE || !CONFIG.BSKY_PASSWORD) {
 			throw new AtpError(
@@ -156,7 +156,7 @@ function setupJetstreamListeners(jetstream: Jetstream, aeon: Aeon) {
 				const validatedDID = DidSchema.parse(event.did);
 				const rkey = event.commit.record.subject.uri.split('/').pop()!;
 				const validatedRkey = RkeySchema.parse(rkey);
-				await aeon.assignOrUpdateLabel(validatedDID, validatedRkey);
+				await aeon.handleLike(validatedDID, validatedRkey);
 			} catch (error) {
 				logger.error(
 					`Error processing event: ${

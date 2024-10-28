@@ -54,6 +54,7 @@ export const ConfigSchema = z.object({
 	BSKY_PASSWORD: z.string().min(1),
 	BSKY_URL: z.string().url(),
 	PORT: z.number().int().min(1024),
+	REMOVAL_RKEY: RkeySchema,
 }).strict();
 
 /**

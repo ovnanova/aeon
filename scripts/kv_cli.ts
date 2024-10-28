@@ -111,33 +111,6 @@ async function wipeStore(): Promise<void> {
 }
 
 /**
- * Handles metrics commands
- * @param command The metrics command to execute
- */
-async function handleMetrics(command: string): Promise<void> {
-	switch (command) {
-		case 'metrics': {
-			const metrics = await kv.get(['metrics', 'labels']);
-			if (metrics.value) {
-				logger.info('Label Metrics:', metrics.value);
-			} else {
-				logger.info('No metrics data found');
-			}
-			break;
-		}
-
-		case 'metrics:clear': {
-			await kv.delete(['metrics', 'labels']);
-			logger.info('Metrics cleared successfully');
-			break;
-		}
-
-		default:
-			throw new Error(`Unknown metrics command: ${command}`);
-	}
-}
-
-/**
  * Masks sensitive values for display
  * @param value Value to mask
  * @returns Masked string
@@ -186,10 +159,6 @@ async function main() {
 				break;
 			case 'wipe':
 				await wipeStore();
-				break;
-			case 'metrics':
-			case 'metrics:clear':
-				await handleMetrics(command);
 				break;
 			default:
 				showHelp();

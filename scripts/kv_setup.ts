@@ -34,6 +34,7 @@ interface SetupConfig {
 	BSKY_PASSWORD: string;
 	BSKY_URL: string;
 	PORT: number;
+	REMOVAL_RKEY: string;
 }
 
 /**
@@ -50,6 +51,7 @@ const defaultConfig: SetupConfig = {
 	BSKY_PASSWORD: 'this-is-an-app-password',
 	BSKY_URL: 'https://bsky.social',
 	PORT: 1024,
+	REMOVAL_RKEY: '3jzfcijpj2z2d',
 };
 
 async function setup() {
@@ -79,10 +81,8 @@ async function setup() {
 	}
 }
 
-await validateAndSetConfig();
-
 // Instructions for use:
-// 1. Modify the 'configToSet' object with your desired configuration
+// 1. Modify the 'SetupConfig' object with your desired configuration
 // 2. Run the script using: deno task kv:setup
 // 3. The script will validate your configuration and set it in the KV store
 // 4. If there are any validation errors, they will be logged to the console

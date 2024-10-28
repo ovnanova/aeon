@@ -1,79 +1,45 @@
 /**
  * Core module for the ÆON labeler
+ * Manages the automatic assignment and removal of labels based on user interactions.
  *
- * - Manages label assignment, retrieval, and deletion
- * - Interacts with atprotocol and the Labeler Server
- * - Implements error handling and logging
+ * Key Features:
+ * - One label active per user at any time
+ * - Label assignment through post interactions (likes)
+ * - Automatic removal of previous labels when new ones are assigned
+ * - Decommission post that removes all labels
  */
-
 import { AtpAgent } from 'atproto';
 import { LabelerServer } from 'labeler';
 import { CONFIG } from './config.ts';
 import { LABELS } from './labels.ts';
-import {
-	CATEGORIES,
-	DidSchema,
-	Label,
-	LabelCategory,
-	RkeySchema,
-	SigningKeySchema,
-} from './schemas.ts';
+import { DidSchema, RkeySchema, SigningKeySchema } from './schemas.ts';
 import { AtpError, LabelingError, ServerError } from './errors.ts';
 import * as log from '@std/log';
 import { MetricsTracker } from './metrics.ts';
 
 /**
  * Main class for handling labeling operations.
- * Manages the lifecycle of the labeler server and ATP agent.
+ * Manages the lifecycle of the labeler server, logger, and ATP agent.
  */
 export class Aeon {
 	private readonly logger: log.Logger;
-	private readonly metrics: MetricsTracker;
+	private labelerServer: LabelerServer;
+	private agent: AtpAgent;
 
 	/**
 	 * Private constructor for Aeon class.
-	 * Instances should be created using the static create() method.
 	 *
-	 * @param labelerServer - The LabelerServer instance to use
-	 * @param agent - The AtpAgent instance to use
-	 * @param metrics - The MetricsTracker instance to use
+	 * @param metricsTracker - The Deno KV store to use for metrics tracking
 	 */
-	private constructor(
-		private readonly labelerServer: LabelerServer,
-		private readonly agent: AtpAgent,
-		metrics: MetricsTracker,
-	) {
+	constructor(private readonly metrics: MetricsTracker) {
 		this.logger = log.getLogger();
-		this.metrics = metrics;
-	}
-
-	/**
-	 * Creates an Aeon instance.
-	 * Validates DID and signing key.
-	 * Creates LabelerServer and AtpAgent if not provided.
-	 *
-	 * @param labelerServer - Optional LabelerServer instance
-	 * @param agent - Optional AtpAgent instance
-	 * @param config - Configuration object, defaults to global CONFIG
-	 * @param metrics - Optional MetricsTracker instance
-	 * @returns A new Aeon instance
-	 * @throws {Error} If DID or signing key validation fails
-	 */
-	static create(
-		metrics: MetricsTracker,
-		labelerServer?: LabelerServer,
-		agent?: AtpAgent,
-		config: typeof CONFIG = CONFIG,
-	): Aeon {
-		const validatedDID = DidSchema.parse(config.DID);
-		const validatedSigningKey = SigningKeySchema.parse(config.SIGNING_KEY);
-		const actualLabelerServer = labelerServer ?? new LabelerServer({
+		const validatedDID = DidSchema.parse(CONFIG.DID);
+		const validatedSigningKey = SigningKeySchema.parse(CONFIG.SIGNING_KEY);
+		this.labelerServer = new LabelerServer({
 			did: validatedDID,
 			signingKey: validatedSigningKey,
 		});
-		const actualAgent = agent ??
-			new AtpAgent({ service: CONFIG.BSKY_URL });
-		return new Aeon(actualLabelerServer, actualAgent, metrics);
+		this.agent = new AtpAgent({ service: CONFIG.BSKY_URL });
 	}
 
 	/**
@@ -89,244 +55,204 @@ export class Aeon {
 				identifier: CONFIG.BSKY_HANDLE,
 				password: CONFIG.BSKY_PASSWORD,
 			});
-			this.logger.info('ÆON initialized and logged in successfully');
+			this.logger.info('ATP authentication successful');
 		} catch (error) {
-			this.logger.error('Error in ÆON initialization:', error);
-			throw new AtpError('Failed to initialize ÆON');
+			const errorMessage = error instanceof Error
+				? error.message
+				: String(error);
+			this.logger.error('ATP authentication failed:', errorMessage);
+			throw new AtpError(`ATP initialization failed: ${errorMessage}`);
 		}
+
 		try {
-			await this.labelerServer.start(
-				CONFIG.PORT,
-				this.onServerStarted.bind(this),
-			);
-			this.logger.info('LabelerServer initialized successfully');
+			await this.labelerServer.start(CONFIG.PORT);
+			this.logger.info('LabelerServer started successfully');
 		} catch (error) {
 			await this.agent.logout();
-			this.logger.error('Error in LabelerServer initialization:', error);
-			throw new ServerError('Failed to initialize LabelerServer');
+			const errorMessage = error instanceof Error
+				? error.message
+				: String(error);
+			this.logger.error('LabelerServer startup failed:', errorMessage);
+			throw new ServerError(`Server initialization failed: ${errorMessage}`);
 		}
 	}
 
 	/**
-	 * Shuts down the Aeon instance.
-	 * Stops the labeler server and logs out of ATP.
-	 */
-	async shutdown(): Promise<void> {
-		try {
-			await this.labelerServer.stop();
-			this.logger.info('LabelerServer stopped successfully');
-		} catch (error) {
-			this.logger.error('Error stopping LabelerServer:', error);
-		}
-		try {
-			await this.agent.logout();
-			this.logger.info('ATP agent logged out successfully');
-		} catch (error) {
-			this.logger.error('Error logging out ATP agent:', error);
-		}
-	}
-
-	/**
-	 * Callback function for server start events.
+	 * Handles post interaction (like) events from users.
 	 *
-	 * @param error - Error object if server failed to start, null otherwise
-	 * @param address - The address the server is listening on
-	 */
-	private onServerStarted(error: Error | null, address: string): void {
-		if (error) {
-			this.logger.error('Failed to start server:', error);
-		} else {
-			this.logger.info('Server started successfully at:', address);
-		}
-	}
-
-	/**
-	 * Retrieves current labels for a given DID.
-	 * Queries LabelerServer database for all labels in each category.
+	 * Behavior:
+	 * 1. If user likes the decommission post (REMOVAL_RKEY), their current label is removed
+	 * 2. If user likes a labeled post:
+	 *    - If they have no label, they receive the new label
+	 *    - If they have a different label, old label is negated and new label applied
+	 *    - If they have the same label, no action is taken
+	 * 3. Self-labeling is prevented
 	 *
-	 * @param did - The DID to fetch labels for
-	 * @returns A Map of categories to Sets of label values
+	 * @param subject - The DID of the user who liked the post
+	 * @param rkey - The record key of the post that was liked
+	 * @throws {LabelingError} If label operations fail
 	 */
-	private async fetchCurrentLabels(
-		did: string,
-	): Promise<Map<LabelCategory, Set<string>>> {
-		const labelCategories = new Map<LabelCategory, Set<string>>(
-			Object.entries(CATEGORIES).map((
-				[category],
-			) => [category as LabelCategory, new Set<string>()]),
-		);
-
-		const query = await this.labelerServer.db.prepare<[string, string]>(
-			`SELECT val, neg FROM labels WHERE uri = ? AND val LIKE ? ORDER BY cts DESC`,
-		);
-
-		for (const category of Object.keys(CATEGORIES) as LabelCategory[]) {
-			const results = await query.all(did, `${category}%`);
-
-			for (const row of results) {
-				if (Array.isArray(row) && row.length === 2) {
-					const [val, neg] = row;
-					if (typeof val === 'string' && typeof neg === 'string') {
-						const labels = labelCategories.get(category);
-						if (labels) {
-							if (neg === 'false') {
-								labels.add(val);
-							}
-						}
-					}
-				}
-			}
-
-			const labels = labelCategories.get(category);
-			if (labels && labels.size > 0) {
-				this.logger.info(
-					`Current ${category} labels: ${Array.from(labels).join(', ')}`,
-				);
-			}
-		}
-
-		return labelCategories;
-	}
-
-	/**
-	 * Assigns a single label to an account.
-	 * Validates subject (DID) and rkey.
-	 * Finds the corresponding label for the given rkey.
-	 * Fetches current labels, negates existing ones, and creates the new label.
-	 *
-	 * @param subject - The DID of the account to label
-	 * @param rkey - The rkey of the label to assign
-	 * @throws {LabelingError} If label assignment fails
-	 */
-	async assignOrUpdateLabel(subject: string, rkey: string): Promise<void> {
+	async handleLike(subject: string, rkey: string): Promise<void> {
 		const validatedSubject = DidSchema.parse(subject);
 		const validatedRkey = RkeySchema.parse(rkey);
 
+		// Prevent self-labeling
 		if (validatedSubject === CONFIG.DID) {
-			this.logger.info(
-				`Attempted self-labeling for ${CONFIG.DID}. Operation blocked.`,
-			);
+			this.logger.info(`Self-labeling blocked for ${validatedSubject}`);
 			return;
 		}
 
 		try {
-			const newLabel = this.findLabelByPost(validatedRkey);
+			// Check if this is the removal post
+			if (validatedRkey === CONFIG.REMOVAL_RKEY) {
+				await this.removeCurrentLabel(validatedSubject);
+				return;
+			}
+
+			// Find the label for this post
+			const newLabel = LABELS.find((label) => label.rkey === validatedRkey);
 			if (!newLabel) {
-				throw new Error(`No matching label found for rkey: ${validatedRkey}`);
+				this.logger.info(`No label mapping found for post ${validatedRkey}`);
+				return;
 			}
 
-			const category = this.getCategoryFromLabel(newLabel.identifier);
-			if (!category) {
-				throw new Error(`Invalid category for label: ${newLabel.identifier}`);
+			// Get current label if any
+			const currentLabel = await this.getCurrentLabel(validatedSubject);
+
+			// Skip if the same label is already active
+			if (currentLabel?.val === newLabel.identifier && !currentLabel.neg) {
+				this.logger.info(
+					`Label ${newLabel.identifier} already active for ${validatedSubject}`,
+				);
+				return;
 			}
 
-			const currentLabels = await this.fetchCurrentLabels(validatedSubject);
-			const existingLabels = currentLabels.get(category) ?? new Set<string>();
-
-			this.logger.info(
-				`Updating ${category} label for ${validatedSubject}. Existing: ${
-					Array.from(existingLabels).join(', ')
-				}. New: ${newLabel.identifier}`,
-			);
-
-			if (existingLabels.size > 0) {
-				await this.labelerServer.createLabels({ uri: validatedSubject }, {
-					negate: Array.from(existingLabels),
+			// If they have a different label, negate it first
+			if (currentLabel?.val && !currentLabel.neg) {
+				await this.labelerServer.createLabel({
+					uri: validatedSubject,
+					val: currentLabel.val,
+					neg: true,
 				});
 				this.logger.info(
-					`Negated existing ${category} labels for ${validatedSubject}`,
+					`Negated existing label ${currentLabel.val} for ${validatedSubject}`,
 				);
+				await this.metrics.decrementLabel(currentLabel.val);
 			}
 
+			// Apply the new label
 			await this.labelerServer.createLabel({
 				uri: validatedSubject,
 				val: newLabel.identifier,
 			});
+
+			await this.metrics.incrementLabel(newLabel.identifier);
 			this.logger.info(
-				`Successfully added new label ${newLabel.identifier} for ${validatedSubject}`,
+				`Applied label ${newLabel.identifier} to ${validatedSubject}`,
 			);
-			this.metrics.recordLabelOp(newLabel.identifier);
 		} catch (error) {
-			this.logger.error(
-				`Error in assignOrUpdateLabel: ${
-					error instanceof Error ? error.message : String(error)
-				}`,
+			const errorMessage = error instanceof Error
+				? error.message
+				: String(error);
+			this.logger.error(`Error handling like:`, errorMessage);
+			throw new LabelingError(
+				`Failed to process like for ${validatedSubject}: ${errorMessage}`,
 			);
-			throw new LabelingError(`Failed to assign label for ${validatedSubject}`);
 		}
 	}
 
 	/**
-	 * Removes a label from an account.
-	 * Validates subject (DID).
-	 * Fetches current labels and negates the specified one if it exists.
-	 *
-	 * @param subject - The DID of the account to remove the label from
-	 * @param labelIdentifier - The identifier of the label to remove
-	 * @throws {LabelingError} If label removal fails
+	 * Retrieves the current label state for a given DID.
+	 * 
+	 * @param did - The DID to check
 	 */
-	async removeLabel(subject: string, labelIdentifier: string): Promise<void> {
-		const validatedSubject = DidSchema.parse(subject);
-
+	private async getCurrentLabel(
+		did: string,
 		try {
-			const category = this.getCategoryFromLabel(labelIdentifier);
-			if (!category) {
-				this.logger.info(`Invalid label: ${labelIdentifier}. No action taken.`);
-				return;
+			const query = await this.labelerServer.db.prepare(`
+				SELECT val, neg FROM labels
+				WHERE uri = ?
+				ORDER BY cts DESC
+				LIMIT 1
+			`);
+
+			const result = await query.get(did) as { val: string; neg: boolean } | undefined;
+			if (!result || typeof result.val === 'undefined' || typeof result.neg === 'undefined') {
+				return null;
 			}
 
-			const currentLabels = await this.fetchCurrentLabels(validatedSubject);
-			const existingLabels = currentLabels.get(category) ?? new Set<string>();
+			return {
+				val: result.val,
+				neg: Boolean(result.neg),
+			};
+		} catch (error) {
+			const errorMessage = error instanceof Error
+				? error.message
+				: String(error);
+			this.logger.error(`Database query failed:`, errorMessage);
+			throw new LabelingError(`Failed to fetch current label: ${errorMessage}`);
+		}
+	}
 
-			if (!existingLabels.has(labelIdentifier)) {
-				this.logger.info(
-					`Label ${labelIdentifier} not found for ${validatedSubject}. No action taken.`,
-				);
+	/**
+	 * Removes the current label from a user by creating a negation label.
+	 * Only removes the label if one is currently active.
+	 * 
+	 * @param did - The DID of the account to remove the label from
+	 */
+	private async removeCurrentLabel(did: string): Promise<void> {
+		try {
+			const currentLabel = await this.getCurrentLabel(did);
+
+			if (!currentLabel?.val || currentLabel.neg) {
+				this.logger.info(`No active label to remove for ${did}`);
 				return;
 			}
-
-			this.logger.info(
-				`Removing ${category} label ${labelIdentifier} from ${validatedSubject}.`,
-			);
 
 			await this.labelerServer.createLabel({
-				uri: validatedSubject,
-				val: labelIdentifier,
+				uri: did,
+				val: currentLabel.val,
 				neg: true,
 			});
-			this.logger.info(
-				`Successfully removed label ${labelIdentifier} from ${validatedSubject}`,
-			);
-			this.metrics.recordRemoveOp(labelIdentifier);
+
+			await this.metrics.decrementLabel(currentLabel.val);
+			this.logger.info(`Removed label ${currentLabel.val} from ${did}`);
 		} catch (error) {
-			this.logger.error(
-				`Error in removeLabel: ${
-					error instanceof Error ? error.message : String(error)
-				}`,
+			const errorMessage = error instanceof Error
+				? error.message
+				: String(error);
+			this.logger.error(`Error removing label:`, errorMessage);
+			throw new LabelingError(
+				`Failed to remove label for ${did}: ${errorMessage}`,
 			);
-			throw new LabelingError(`Failed to delete label for ${validatedSubject}`);
 		}
 	}
 
 	/**
-	 * Finds a Label object matching the given rkey.
-	 *
-	 * @param rkey - The rkey to find
-	 * @returns The matching Label object, or undefined if not found
+	 * Performs graceful shutdown of the Aeon instance.
 	 */
-	private findLabelByPost(rkey: string): Label | undefined {
-		return LABELS.find((label) => label.rkey === rkey);
-	}
+	async shutdown(): Promise<void> {
+		const shutdownTasks = [
+			{
+				name: 'LabelerServer',
+				task: () => this.labelerServer.stop(),
+			},
+			{
+				name: 'ATP Agent',
+				task: () => this.agent.logout(),
+			},
+		];
 
-	/**
-	 * Determines the category of a label based on its identifier.
-	 *
-	 * @param label - The label identifier
-	 * @returns The label category, or undefined if not found
-	 */
-	private getCategoryFromLabel(label: string): LabelCategory | undefined {
-		return Object.keys(CATEGORIES).find((cat) => label.startsWith(`${cat}`)) as
-			| LabelCategory
-			| undefined;
+		for (const { name, task } of shutdownTasks) {
+			try {
+				await task();
+				this.logger.info(`${name} shutdown successful`);
+			} catch (error) {
+				const errorMessage = error instanceof Error
+					? error.message
+					: String(error);
+				this.logger.error(`${name} shutdown failed:`, errorMessage);
+			}
+		}
 	}
 }

@@ -1,25 +1,14 @@
 /**
  * Metrics tracking system for ÆON.
- * Tracks label application and removal statistics.
+ * Tracks label counts for each identifier.
  */
 import * as log from '@std/log';
 import { LabelIdentifier } from './schemas.ts';
 import { MetricsError } from './errors.ts';
 
-interface ProcessStats {
-	startTime: number;
-	labelsTotal: number;
-	removeTotal: number;
-	lastLabelApplied?: string;
-	lastLabelRemoved?: string;
-	lastOperationTime?: number;
+interface LabelMetrics {
+	[key: string]: number; // Counts for each label identifier
 }
-
-const INITIAL_STATS: ProcessStats = {
-	startTime: Date.now(),
-	labelsTotal: 0,
-	removeTotal: 0,
-};
 
 /**
  * Manages metrics for label operations.
@@ -33,78 +22,75 @@ export class MetricsTracker {
 	}
 
 	/**
-	 * Records a label application operation.
+	 * Records a label application by incrementing its counter
 	 */
-	async recordLabelOp(label: LabelIdentifier): Promise<void> {
+	async incrementLabel(identifier: LabelIdentifier): Promise<void> {
 		try {
-			const stats = await this.getStats();
-			stats.labelsTotal++;
-			stats.lastLabelApplied = label;
-			stats.lastOperationTime = Date.now();
-
-			await this.kv.set(['metrics', 'process_stats'], stats);
-			this.logger.info(`Label operation recorded: ${label}`);
+			const metrics = await this.getLabelMetrics();
+			metrics[identifier] = (metrics[identifier] || 0) + 1;
+			await this.kv.set(['metrics', 'labels'], metrics);
+			this.logger.info(
+				`Incremented count for label ${identifier} to ${metrics[identifier]}`,
+			);
 		} catch (error) {
-			this.logger.error(
-				`Failed to record label operation: ${
-					error instanceof Error ? error.message : String(error)
-				}`,
-			);
-			throw new MetricsError(
-				`Failed to record label operation: ${
-					error instanceof Error ? error.message : String(error)
-				}`,
-			);
+			const msg = `Failed to increment label ${identifier}: ${
+				error instanceof Error ? error.message : String(error)
+			}`;
+			this.logger.error(msg);
+			throw new MetricsError(msg);
 		}
 	}
 
 	/**
-	 * Records a label removal operation.
+	 * Records a label removal by decrementing its counter
 	 */
-	async recordRemoveOp(label: LabelIdentifier): Promise<void> {
+	async decrementLabel(identifier: LabelIdentifier): Promise<void> {
 		try {
-			const stats = await this.getStats();
-			stats.removeTotal++;
-			stats.lastLabelRemoved = label;
-			stats.lastOperationTime = Date.now();
-
-			await this.kv.set(['metrics', 'process_stats'], stats);
-			this.logger.info(`Label removal recorded: ${label}`);
+			const metrics = await this.getLabelMetrics();
+			if (metrics[identifier] > 0) {
+				metrics[identifier]--;
+				await this.kv.set(['metrics', 'labels'], metrics);
+				this.logger.info(
+					`Decremented count for label ${identifier} to ${metrics[identifier]}`,
+				);
+			}
 		} catch (error) {
-			this.logger.error(
-				`Failed to record label removal: ${
-					error instanceof Error ? error.message : String(error)
-				}`,
-			);
-			throw new MetricsError(
-				`Failed to record label removal: ${
-					error instanceof Error ? error.message : String(error)
-				}`,
-			);
+			const msg = `Failed to decrement label ${identifier}: ${
+				error instanceof Error ? error.message : String(error)
+			}`;
+			this.logger.error(msg);
+			throw new MetricsError(msg);
 		}
 	}
 
 	/**
-	 * Retrieves current process statistics.
+	 * Gets the current metrics for all labels
 	 */
-	async getStats(): Promise<ProcessStats> {
+	async getLabelMetrics(): Promise<LabelMetrics> {
 		try {
-			const result = await this.kv.get<ProcessStats>([
-				'metrics',
-				'process_stats',
-			]);
-			return result.value ?? structuredClone(INITIAL_STATS);
+			const result = await this.kv.get<LabelMetrics>(['metrics', 'labels']);
+			return result.value ?? {};
 		} catch (error) {
-			this.logger.error(
-				`Failed to get stats: ${
-					error instanceof Error ? error.message : String(error)
-				}`,
-			);
-			throw new MetricsError(
-				`Failed to get stats: ${
-					error instanceof Error ? error.message : String(error)
-				}`,
-			);
+			const msg = `Failed to get label metrics: ${
+				error instanceof Error ? error.message : String(error)
+			}`;
+			this.logger.error(msg);
+			throw new MetricsError(msg);
 		}
+	}
+
+	/**
+	 * Gets the current count for a specific label
+	 */
+	async getLabelCount(identifier: LabelIdentifier): Promise<number> {
+		const metrics = await this.getLabelMetrics();
+		return metrics[identifier] || 0;
+	}
+
+	/**
+	 * Resets metrics (mainly for testing)
+	 */
+	async reset(): Promise<void> {
+		await this.kv.delete(['metrics', 'labels']);
 	}
 }
