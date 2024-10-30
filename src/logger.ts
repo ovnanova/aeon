@@ -18,7 +18,7 @@ export async function initLogging(): Promise<void> {
 
 	const logFilePath = join(
 		logDir,
-		`aeon_${new Date().toISOString().split('T')[0]}.log`,
+		`${new Date().toISOString().split('T')[0]}_aeon.log`,
 	);
 
 	await log.setup({

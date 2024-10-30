@@ -116,11 +116,15 @@ export class Aeon {
 				return;
 			}
 
+			const newLabelIdentifier = newLabel.identifier;
+
 			// Get current label if any
 			const currentLabel = await this.getCurrentLabel(validatedSubject);
 
+			const currentLabelIdentifier = currentLabel?.val ?? '';
+
 			// Skip if the same label is already active
-			if (currentLabel?.val === newLabel.identifier && !currentLabel.neg) {
+			if (currentLabel?.val === newLabel.identifier && !currentLabel) {
 				this.logger.info(
 					`Label ${newLabel.identifier} already active for ${validatedSubject}`,
 				);
@@ -131,24 +135,24 @@ export class Aeon {
 			if (currentLabel?.val && !currentLabel.neg) {
 				await this.labelerServer.createLabel({
 					uri: validatedSubject,
-					val: currentLabel.val,
+					val: currentLabelIdentifier,
 					neg: true,
 				});
 				this.logger.info(
-					`Negated existing label ${currentLabel.val} for ${validatedSubject}`,
+					`Negated existing label ${currentLabelIdentifier} for ${validatedSubject}`,
 				);
-				await this.metrics.decrementLabel(currentLabel.val);
+				await this.metrics.decrementLabel(currentLabelIdentifier);
 			}
 
 			// Apply the new label
 			await this.labelerServer.createLabel({
 				uri: validatedSubject,
-				val: newLabel.identifier,
+				val: newLabelIdentifier,
 			});
 
-			await this.metrics.incrementLabel(newLabel.identifier);
+			await this.metrics.incrementLabel(newLabelIdentifier);
 			this.logger.info(
-				`Applied label ${newLabel.identifier} to ${validatedSubject}`,
+				`Applied label ${newLabelIdentifier} to ${validatedSubject}`,
 			);
 		} catch (error) {
 			const errorMessage = error instanceof Error
@@ -163,7 +167,7 @@ export class Aeon {
 
 	/**
 	 * Retrieves the current label state for a given DID.
-	 * 
+	 *
 	 * @param did - The DID to check
 	 * @returns Current label value and negation state, or null if no label exists
 	 */
@@ -178,8 +182,13 @@ export class Aeon {
 				LIMIT 1
 			`);
 
-			const result = await query.get(did) as { val: string; neg: boolean } | undefined;
-			if (!result || typeof result.val === 'undefined' || typeof result.neg === 'undefined') {
+			const result = await query.get(did) as
+				| { val: string; neg: boolean }
+				| undefined;
+			if (
+				!result || typeof result.val === 'undefined' ||
+				typeof result.neg === 'undefined'
+			) {
 				return null;
 			}
 
@@ -199,7 +208,7 @@ export class Aeon {
 	/**
 	 * Removes the current label from a user by creating a negation label.
 	 * Only removes the label if one is currently active.
-	 * 
+	 *
 	 * @param did - The DID of the account to remove the label from
 	 */
 	private async removeCurrentLabel(did: string): Promise<void> {
@@ -211,14 +220,16 @@ export class Aeon {
 				return;
 			}
 
+			const currentLabelIdentifier = currentLabel.val;
+
 			await this.labelerServer.createLabel({
 				uri: did,
-				val: currentLabel.val,
+				val: currentLabelIdentifier,
 				neg: true,
 			});
 
-			await this.metrics.decrementLabel(currentLabel.val);
-			this.logger.info(`Removed label ${currentLabel.val} from ${did}`);
+			await this.metrics.decrementLabel(currentLabelIdentifier);
+			this.logger.info(`Removed label ${currentLabelIdentifier} from ${did}`);
 		} catch (error) {
 			const errorMessage = error instanceof Error
 				? error.message

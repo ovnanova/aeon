@@ -24,7 +24,7 @@ Feel free to submit a pull request if you see a fix or improvement to be made. F
 
 ## 📜 License
 
-This project is licensed under the MIT License.
+This project is licensed under the MPL-2.0 license.
 
 ## 🤝 Acknowledgments
 

@@ -43,7 +43,7 @@ interface SetupConfig {
  */
 const defaultConfig: SetupConfig = {
 	DID: 'did:plc:7iza6de2dwap2sbkpav7c6c6',
-	SIGNING_KEY: 'K8ej1iNr0qpOT5RQZzA7/nMx2+4dFgYuCVbL3PwcJaU',
+	SIGNING_KEY: 'K8ej1iNr0qpOT5RQZzA7hnMx2b4dFgYuCVbL3PwcJaU',
 	JETSTREAM_URL: 'wss://jetstream1.us-west.bsky.network/subscribe',
 	COLLECTION: 'app.bsky.feed.like',
 	CURSOR_INTERVAL: 10000,

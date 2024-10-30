@@ -32,11 +32,11 @@ export const DidSchema = z.string()
 /**
  * SigningKeySchema
  * - 43-character string
- * - standard Base64 alphabet only (A-Z, a-z, 0-9, +, /)
+ * - alphanumeric ASCII alphabet only (A-Z, a-z, 0-9)
  * - Represents a 256-bit (32-byte) cryptographic key
- * - Encoded as standard base64 (no padding)
+ * - Encoded as base64url (no padding)
  */
-export const SigningKeySchema = z.string().regex(/^[A-Za-z0-9+/]{43}$/);
+export const SigningKeySchema = z.string().regex(/^[A-Za-z0-9]{43}$/);
 
 /**
  * ConfigSchema
