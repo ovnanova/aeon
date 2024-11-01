@@ -131,12 +131,18 @@ async function initializeCursor(): Promise<number> {
  * Sets up event listeners for Jetstream.
  * Handles 'open', 'close', and 'error' events.
  * Processes 'create' events for the specified collection.
+ * Implements exponential backoff reconnection strategy.
  *
  * @param jetstream - The Jetstream instance
  * @param aeon - The Aeon instance
  */
 function setupJetstreamListeners(jetstream: Jetstream, aeon: Aeon) {
+	let reconnectAttempt = 0;
+	const MAX_RECONNECT_ATTEMPTS = 10;
+
 	jetstream.on('open', () => {
+		// Reset reconnection counter on successful connection
+		reconnectAttempt = 0;
 		logger.info(
 			`Connected to Jetstream at ${CONFIG.JETSTREAM_URL} with cursor ${jetstream.cursor}`,
 		);
@@ -144,28 +150,105 @@ function setupJetstreamListeners(jetstream: Jetstream, aeon: Aeon) {
 
 	jetstream.on('close', () => {
 		logger.info('Jetstream connection closed');
-	});
 
-	jetstream.on('error', (error: Error) => {
-		logger.error(`Jetstream error: ${error.message}`);
-	});
+		// Reconnection with exponential backoff
+		if (reconnectAttempt < MAX_RECONNECT_ATTEMPTS) {
+			const delay = Math.min(1000 * Math.pow(2, reconnectAttempt), 30000); // Cap at 30 seconds
+			reconnectAttempt++;
 
-	jetstream.onCreate(CONFIG.COLLECTION, async (event: any) => {
-		if (event.commit?.record?.subject?.uri?.includes(CONFIG.DID)) {
-			try {
-				const validatedDID = DidSchema.parse(event.did);
-				const rkey = event.commit.record.subject.uri.split('/').pop()!;
-				const validatedRkey = RkeySchema.parse(rkey);
-				await aeon.handleLike(validatedDID, validatedRkey);
-			} catch (error) {
-				logger.error(
-					`Error processing event: ${
-						error instanceof JetstreamError ? error.message : String(error)
-					}`,
-				);
-			}
+			logger.info(
+				`Attempting reconnection in ${delay}ms (attempt ${reconnectAttempt}/${MAX_RECONNECT_ATTEMPTS})`,
+			);
+
+			setTimeout(() => {
+				try {
+					jetstream.start();
+				} catch (error) {
+					logger.error(
+						`Reconnection attempt failed: ${
+							error instanceof Error ? error.message : String(error)
+						}`,
+					);
+				}
+			}, delay);
+		} else {
+			logger.error(
+				'Max reconnection attempts reached. Manual intervention required.',
+			);
 		}
 	});
+
+	jetstream.on('error', () => {
+		// Just log that an error occurred - don't try to access error properties
+		// as the underlying WebSocket implementation might not provide them
+		logger.error('Jetstream encountered a WebSocket error');
+
+		// Let the close handler handle reconnection
+		// as error events are usually followed by close events
+	});
+
+	jetstream.onCreate(CONFIG.COLLECTION, async (event: unknown) => {
+		try {
+			// Type guard for event structure
+			if (!isValidEvent(event)) {
+				logger.error('Received invalid event structure:', { event });
+				return;
+			}
+
+			if (event.commit?.record?.subject?.uri?.includes(CONFIG.DID)) {
+				const validatedDID = DidSchema.parse(event.did);
+				const rkey = event.commit.record.subject.uri.split('/').pop();
+
+				if (!rkey) {
+					logger.error('Could not extract rkey from event:', { event });
+					return;
+				}
+
+				const validatedRkey = RkeySchema.parse(rkey);
+				await aeon.handleLike(validatedDID, validatedRkey);
+			}
+		} catch (error) {
+			logger.error(
+				`Error processing event: ${
+					error instanceof Error ? error.message : String(error)
+				}`,
+			);
+		}
+	});
+}
+
+/**
+ * Type guard to validate Jetstream event structure
+ */
+function isValidEvent(event: unknown): event is {
+	did: string;
+	commit: {
+		record: {
+			subject: {
+				uri: string;
+			};
+		};
+	};
+} {
+	if (typeof event !== 'object' || event === null) return false;
+
+	const e = event as Record<string, unknown>;
+	return (
+		typeof e.did === 'string' &&
+		typeof e.commit === 'object' && e.commit !== null &&
+		typeof (e.commit as Record<string, unknown>).record === 'object' &&
+		(e.commit as Record<string, unknown>).record !== null &&
+		typeof ((e.commit as Record<string, unknown>).record as Record<
+				string,
+				unknown
+			>).subject === 'object' &&
+		((e.commit as Record<string, unknown>).record as Record<string, unknown>)
+				.subject !== null &&
+		typeof (((e.commit as Record<string, unknown>).record as Record<
+				string,
+				unknown
+			>).subject as Record<string, unknown>).uri === 'string'
+	);
 }
 
 /**
