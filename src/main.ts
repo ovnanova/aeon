@@ -1,11 +1,12 @@
 /**
  * Core application file for ÆON
  *
- * - Imports necessary modules and initializes key components
- * - Sets up logging, configuration, and Deno KV store
- * - Manages ATP agent, Aeon instance, and Jetstream connection
- * - Handles cursor initialization and updates
- * - Implements error handling and graceful shutdown
+ * This module serves as the entry point for the ÆON application, orchestrating:
+ * - Configuration and logging setup
+ * - ATP authentication
+ * - Jetstream connection management
+ * - Event processing lifecycle
+ * - Graceful shutdown handling
  */
 
 import { AtpAgent } from 'atproto';
@@ -17,14 +18,14 @@ import { verifyKvStore } from '../scripts/kv_utils.ts';
 import { AtpError, JetstreamError } from './errors.ts';
 import * as log from '@std/log';
 import { MetricsTracker } from './metrics.ts';
+import { Handler } from './handler.ts';
 
 const kv = await Deno.openKv();
 const logger = log.getLogger();
 
 /**
- * Main function orchestrating the application.
- * Initializes config, verifies KV store, sets up ATP agent, Aeon, and Jetstream.
- * Manages login, cursor, listeners, and shutdown handlers.
+ * Main function orchestrating the ÆON application.
+ * Initializes core services and manages the application lifecycle.
  *
  * @throws {AtpError} If ATP initialization or login fails
  * @throws {JetstreamError} If Jetstream connection fails
@@ -72,13 +73,16 @@ async function main() {
 				cursor: cursor,
 			});
 
+			// Set up event listeners before initializing the handler
 			setupJetstreamListeners(jetstream, aeon);
 
-			jetstream.start();
-			logger.info('Jetstream started');
+			// Initialize connection management
+			const handler = new Handler(jetstream);
+			await handler.start();
+			logger.info('Jetstream started with connection management');
 
 			setupCursorUpdateInterval(jetstream);
-			setupShutdownHandlers(aeon, jetstream);
+			setupShutdownHandlers(aeon, handler);
 		} catch (error) {
 			if (error instanceof Error) {
 				throw new JetstreamError(
@@ -102,8 +106,6 @@ async function main() {
 
 /**
  * Initializes or retrieves the cursor value from the KV store.
- * The cursor represents a point in time (in microseconds) from which
- * to start processing events.
  *
  * @returns The cursor value in microseconds since epoch
  */
@@ -129,67 +131,17 @@ async function initializeCursor(): Promise<number> {
 
 /**
  * Sets up event listeners for Jetstream.
- * Handles 'open', 'close', and 'error' events.
- * Processes 'create' events for the specified collection.
- * Implements exponential backoff reconnection strategy.
+ * Configures event processing for the ÆON application.
  *
  * @param jetstream - The Jetstream instance
- * @param aeon - The Aeon instance
+ * @param aeon - The ÆON instance
  */
-function setupJetstreamListeners(jetstream: Jetstream, aeon: Aeon) {
-	let reconnectAttempt = 0;
-	const MAX_RECONNECT_ATTEMPTS = 10;
-
-	jetstream.on('open', () => {
-		// Reset reconnection counter on successful connection
-		reconnectAttempt = 0;
-		logger.info(
-			`Connected to Jetstream at ${CONFIG.JETSTREAM_URL} with cursor ${jetstream.cursor}`,
-		);
-	});
-
-	jetstream.on('close', () => {
-		logger.info('Jetstream connection closed');
-
-		// Reconnection with exponential backoff
-		if (reconnectAttempt < MAX_RECONNECT_ATTEMPTS) {
-			const delay = Math.min(1000 * Math.pow(2, reconnectAttempt), 30000); // Cap at 30 seconds
-			reconnectAttempt++;
-
-			logger.info(
-				`Attempting reconnection in ${delay}ms (attempt ${reconnectAttempt}/${MAX_RECONNECT_ATTEMPTS})`,
-			);
-
-			setTimeout(() => {
-				try {
-					jetstream.start();
-				} catch (error) {
-					logger.error(
-						`Reconnection attempt failed: ${
-							error instanceof Error ? error.message : String(error)
-						}`,
-					);
-				}
-			}, delay);
-		} else {
-			logger.error(
-				'Max reconnection attempts reached. Manual intervention required.',
-			);
-		}
-	});
-
-	jetstream.on('error', () => {
-		// Just log that an error occurred - don't try to access error properties
-		// as the underlying WebSocket implementation might not provide them
-		logger.error('Jetstream encountered a WebSocket error');
-
-		// Let the close handler handle reconnection
-		// as error events are usually followed by close events
-	});
-
+function setupJetstreamListeners(
+	jetstream: Jetstream<string, string>,
+	aeon: Aeon,
+) {
 	jetstream.onCreate(CONFIG.COLLECTION, async (event: unknown) => {
 		try {
-			// Type guard for event structure
 			if (!isValidEvent(event)) {
 				logger.error('Received invalid event structure:', { event });
 				return;
@@ -218,7 +170,10 @@ function setupJetstreamListeners(jetstream: Jetstream, aeon: Aeon) {
 }
 
 /**
- * Type guard to validate Jetstream event structure
+ * Type guard to validate Jetstream event structure.
+ *
+ * @param event - The event object to validate
+ * @returns True if the event has the required structure
  */
 function isValidEvent(event: unknown): event is {
 	did: string;
@@ -252,12 +207,11 @@ function isValidEvent(event: unknown): event is {
 }
 
 /**
- * Sets up an interval to periodically update the cursor value in the KV store.
- * This ensures we can resume from the last processed event after a restart.
+ * Sets up periodic cursor updates.
  *
- * @param jetstream - The Jetstream instance to get the cursor from
+ * @param jetstream - The Jetstream instance
  */
-function setupCursorUpdateInterval(jetstream: Jetstream) {
+function setupCursorUpdateInterval(jetstream: Jetstream<string, string>) {
 	setInterval(async () => {
 		if (jetstream.cursor) {
 			logger.info(
@@ -271,17 +225,16 @@ function setupCursorUpdateInterval(jetstream: Jetstream) {
 }
 
 /**
- * Sets up handlers for SIGINT and SIGTERM signals to ensure graceful shutdown.
- * Closes all connections and cleans up resources before exiting.
+ * Sets up handlers for graceful shutdown.
  *
- * @param aeon - The Aeon instance to shut down
- * @param jetstream - The Jetstream instance to close
+ * @param aeon - The ÆON instance
+ * @param handler - The connection handler
  */
-function setupShutdownHandlers(aeon: Aeon, jetstream: Jetstream) {
+function setupShutdownHandlers(aeon: Aeon, handler: Handler) {
 	const shutdown = async () => {
 		logger.info('Shutting down...');
 		await aeon.shutdown();
-		jetstream.close();
+		await handler.shutdown();
 		await closeConfig();
 		kv.close();
 		Deno.exit(0);
