@@ -16,7 +16,6 @@
 		"kv:list": "deno run --allow-read --allow-write --unstable-kv scripts/kv_cli.ts list",
 		"kv:get": "deno run --allow-read --allow-write --unstable-kv scripts/kv_cli.ts get",
 		"kv:set": "deno run --allow-read --allow-write --unstable-kv scripts/kv_cli.ts set",
-		"kv:update": "deno run --allow-read --allow-write --unstable-kv scripts/kv_cli.ts update",
 		"kv:delete": "deno run --allow-read --allow-write --unstable-kv scripts/kv_cli.ts delete",
 		"kv:wipe": "deno run --allow-read --allow-write --unstable-kv scripts/kv_cli.ts wipe",
 		"kv:setup": "deno run --allow-read --allow-write --allow-env --unstable-kv scripts/kv_setup.ts",

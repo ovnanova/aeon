@@ -85,9 +85,16 @@ async function getValue(key: Deno.KvKey): Promise<void> {
  * @param value Value to store
  */
 async function setValue(key: Deno.KvKey, value: unknown): Promise<void> {
-	validateKeyValue(key, value);
-	await kv.set(key, value);
-	logger.info(`Set value for key ${key.join(':')}: ${JSON.stringify(value)}`);
+	// Convert string number to actual number before validation
+	const parsedValue = typeof value === 'string' && !isNaN(Number(value))
+		? Number(value)
+		: value;
+
+	validateKeyValue(key, parsedValue);
+	await kv.set(key, parsedValue);
+	logger.info(
+		`Set value for key ${key.join(':')}: ${JSON.stringify(parsedValue)}`,
+	);
 }
 
 /**

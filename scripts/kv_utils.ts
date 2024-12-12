@@ -1,5 +1,5 @@
 /**
- * Deno KV utility functions for ÆON
+ * Deno KV utility functions
  * Provides type-safe CRUD operations and verification utilities.
  */
 
@@ -48,34 +48,6 @@ export async function setValue(key: Deno.KvKey, value: unknown): Promise<void> {
 		logger.error(`Failed to set value for key ${key.join('/')}`, { error });
 		throw new KvError(
 			`Failed to set value for key ${key.join('/')}: ${
-				error instanceof Error ? error.message : String(error)
-			}`,
-		);
-	}
-}
-
-/**
- * Updates a value in the KV store using an update function.
- *
- * @param key - The key to update
- * @param updateFn - Function that takes the old value and returns the new value
- * @throws {KvError} If the update fails
- */
-export async function updateValue<T>(
-	key: Deno.KvKey,
-	updateFn: (oldValue: T | null) => T,
-): Promise<void> {
-	try {
-		const kv = await Deno.openKv();
-		const existingEntry = await kv.get<T>(key);
-		const newValue = updateFn(existingEntry.value);
-		await kv.set(key, newValue);
-		await kv.close();
-		logger.debug(`Updated value for key ${key.join('/')}`);
-	} catch (error) {
-		logger.error(`Failed to update value for key ${key.join('/')}`, { error });
-		throw new KvError(
-			`Failed to update value for key ${key.join('/')}: ${
 				error instanceof Error ? error.message : String(error)
 			}`,
 		);
