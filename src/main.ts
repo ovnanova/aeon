@@ -10,9 +10,14 @@
  */
 
 import { AtpAgent } from 'atproto';
-import { Jetstream } from 'jetstream';
+import { CommitCreateEvent, Jetstream } from 'jetstream';
 import { Aeon } from './aeon.ts';
-import { closeConfig, CONFIG, initializeConfig } from './config.ts';
+import {
+	closeConfig,
+	CONFIG,
+	initializeConfig,
+	setConfigValue,
+} from './config.ts';
 import { DidSchema, RkeySchema } from './schemas.ts';
 import { verifyKvStore } from '../scripts/kv_utils.ts';
 import { AtpError, JetstreamError } from './errors.ts';
@@ -20,8 +25,20 @@ import * as log from '@std/log';
 import { MetricsTracker } from './metrics.ts';
 import { Handler } from './handler.ts';
 
+/** Persistent key-value store for application state and data */
 const kv = await Deno.openKv();
+
+/** Application-wide logger instance */
 const logger = log.getLogger();
+
+/** Set for tracking processed events to prevent duplicates */
+const processedEvents = new Set<string>();
+
+/** Interval for cleaning up expired events from the deduplication cache (5 minutes) */
+const CACHE_CLEANUP_INTERVAL = 300000;
+
+/** Duration to retain processed events in the cache (1 hour) */
+const EVENT_RETENTION_DURATION = 3600000;
 
 /**
  * Main function orchestrating the ÆON application.
@@ -38,16 +55,36 @@ async function main() {
 		}
 		logger.info('KV store verified successfully');
 
+		// Ensure cursor is properly initialized
+		const expectedCursor = Date.now() * 1000;
+		if (CONFIG.CURSOR < expectedCursor) {
+			logger.info(
+				`Cursor needs update. Current: ${CONFIG.CURSOR}, setting to: ${expectedCursor} (${
+					new Date(expectedCursor / 1000).toISOString()
+				})`,
+			);
+			await setConfigValue('CURSOR', expectedCursor);
+		} else {
+			logger.info(
+				`Cursor is current: ${CONFIG.CURSOR} (${
+					new Date(CONFIG.CURSOR / 1000).toISOString()
+				})`,
+			);
+		}
+
+		// Initialize core services
 		const agent = new AtpAgent({ service: CONFIG.BSKY_URL });
 		const metrics = new MetricsTracker(kv);
 		const aeon = new Aeon(metrics);
 
+		// Validate required authentication configuration
 		if (!CONFIG.BSKY_HANDLE || !CONFIG.BSKY_PASSWORD) {
 			throw new AtpError(
 				'BSKY_HANDLE and BSKY_PASSWORD must be set in the configuration',
 			);
 		}
 
+		// Authenticate with ATP service
 		try {
 			await agent.login({
 				identifier: CONFIG.BSKY_HANDLE,
@@ -64,24 +101,35 @@ async function main() {
 
 		await aeon.init();
 
-		const cursor = await initializeCursor();
-
 		try {
+			// Initialize Jetstream connection
 			const jetstream = new Jetstream({
 				wantedCollections: [CONFIG.COLLECTION],
 				endpoint: CONFIG.JETSTREAM_URL,
-				cursor: cursor,
+				cursor: CONFIG.CURSOR,
 			});
 
 			// Set up event listeners before initializing the handler
 			setupJetstreamListeners(jetstream, aeon);
 
-			// Initialize connection management
+			// Configure cache cleanup
+			setInterval(() => {
+				const now = Date.now();
+				for (const eventId of processedEvents) {
+					const [, , timeStr] = eventId.split(':');
+					const eventTime = parseInt(timeStr);
+					if (now - eventTime > EVENT_RETENTION_DURATION) {
+						processedEvents.delete(eventId);
+					}
+				}
+			}, CACHE_CLEANUP_INTERVAL);
+
+			// Initialize and start connection management
 			const handler = new Handler(jetstream);
 			await handler.start();
 			logger.info('Jetstream started with connection management');
 
-			setupCursorUpdateInterval(jetstream);
+			setupCursorUpdateInterval(jetstream, handler);
 			setupShutdownHandlers(aeon, handler);
 		} catch (error) {
 			if (error instanceof Error) {
@@ -105,28 +153,16 @@ async function main() {
 }
 
 /**
- * Initializes or retrieves the cursor value from the KV store.
+ * Generates a unique identifier for event deduplication.
+ * Combines the event's DID, revision, and timestamp to create a unique string.
  *
- * @returns The cursor value in microseconds since epoch
+ * @param event - The Jetstream event requiring a unique identifier
+ * @returns A unique string identifier for the event
  */
-async function initializeCursor(): Promise<number> {
-	const cursorResult = await kv.get(['cursor']);
-	if (cursorResult.value === null) {
-		const cursor = Date.now() * 1000;
-		logger.info(
-			`Cursor not found, setting to: ${cursor} (${
-				new Date(cursor / 1000).toISOString()
-			})`,
-		);
-		await kv.set(['cursor'], cursor);
-		return cursor;
-	} else {
-		const cursor = cursorResult.value as number;
-		logger.info(
-			`Cursor found: ${cursor} (${new Date(cursor / 1000).toISOString()})`,
-		);
-		return cursor;
-	}
+function generateEventId(
+	event: CommitCreateEvent<string>,
+): string {
+	return `${event.did}:${event.commit.rev}:${Date.now()}`;
 }
 
 /**
@@ -140,33 +176,46 @@ function setupJetstreamListeners(
 	jetstream: Jetstream<string, string>,
 	aeon: Aeon,
 ) {
-	jetstream.onCreate(CONFIG.COLLECTION, async (event: unknown) => {
-		try {
-			if (!isValidEvent(event)) {
-				logger.error('Received invalid event structure:', { event });
-				return;
-			}
-
-			if (event.commit?.record?.subject?.uri?.includes(CONFIG.DID)) {
-				const validatedDID = DidSchema.parse(event.did);
-				const rkey = event.commit.record.subject.uri.split('/').pop();
-
-				if (!rkey) {
-					logger.error('Could not extract rkey from event:', { event });
+	jetstream.onCreate(
+		CONFIG.COLLECTION,
+		async (event: CommitCreateEvent<typeof CONFIG.COLLECTION>) => {
+			try {
+				const eventId = generateEventId(event);
+				if (processedEvents.has(eventId)) {
+					logger.debug(`Skipping duplicate create event: ${eventId}`);
 					return;
 				}
 
-				const validatedRkey = RkeySchema.parse(rkey);
-				await aeon.handleLike(validatedDID, validatedRkey);
+				if (!isValidEvent(event)) {
+					logger.error('Received invalid event structure:', { event });
+					return;
+				}
+
+				if (event.commit?.record?.subject?.uri?.includes(CONFIG.DID)) {
+					const validatedDID = DidSchema.parse(event.did);
+					const rkey = event.commit.record.subject.uri.split('/').pop();
+
+					if (!rkey) {
+						logger.error('Could not extract rkey from event:', { event });
+						return;
+					}
+
+					const validatedRkey = RkeySchema.parse(rkey);
+					await aeon.handleLike(validatedDID, validatedRkey);
+
+					if (jetstream.cursor) {
+						await setConfigValue('CURSOR', jetstream.cursor);
+					}
+				}
+			} catch (error) {
+				logger.error(
+					`Error processing event: ${
+						error instanceof Error ? error.message : String(error)
+					}`,
+				);
 			}
-		} catch (error) {
-			logger.error(
-				`Error processing event: ${
-					error instanceof Error ? error.message : String(error)
-				}`,
-			);
-		}
-	});
+		},
+	);
 }
 
 /**
@@ -207,13 +256,18 @@ function isValidEvent(event: unknown): event is {
 }
 
 /**
- * Sets up periodic cursor updates.
+ * Establishes periodic cursor state persistence.
+ * Ensures recovery point maintenance for event processing.
  *
- * @param jetstream - The Jetstream instance
+ * @param jetstream - The Jetstream instance providing cursor values
+ * @param handler - The Handler instance managing connection state
  */
-function setupCursorUpdateInterval(jetstream: Jetstream<string, string>) {
+function setupCursorUpdateInterval(
+	jetstream: Jetstream<string, string>,
+	handler: Handler,
+) {
 	setInterval(async () => {
-		if (jetstream.cursor) {
+		if (jetstream.cursor && handler.connected) {
 			logger.info(
 				`Updating cursor to: ${jetstream.cursor} (${
 					new Date(jetstream.cursor / 1000).toISOString()
@@ -225,19 +279,41 @@ function setupCursorUpdateInterval(jetstream: Jetstream<string, string>) {
 }
 
 /**
- * Sets up handlers for graceful shutdown.
+ * Configures handlers for graceful application shutdown.
+ * Ensures proper cleanup of resources during application termination.
  *
- * @param aeon - The ÆON instance
- * @param handler - The connection handler
+ * @param labeler - The Labeler instance requiring cleanup
+ * @param handler - The Handler instance managing connection state
  */
-function setupShutdownHandlers(aeon: Aeon, handler: Handler) {
+function setupShutdownHandlers(labeler: Aeon, handler: Handler) {
+	let isShuttingDown = false;
+
 	const shutdown = async () => {
-		logger.info('Shutting down...');
-		await aeon.shutdown();
-		await handler.shutdown();
-		await closeConfig();
-		kv.close();
-		Deno.exit(0);
+		if (isShuttingDown) {
+			return;
+		}
+		isShuttingDown = true;
+
+		logger.info('Initiating shutdown sequence...');
+
+		try {
+			await Promise.race([
+				handler.shutdown(),
+				new Promise((resolve) => setTimeout(resolve, 7000)),
+			]);
+			await labeler.shutdown();
+			await closeConfig();
+			kv.close();
+			logger.info('Shutdown completed successfully');
+		} catch (error) {
+			logger.error(
+				`Error during shutdown: ${
+					error instanceof Error ? error.message : String(error)
+				}`,
+			);
+		} finally {
+			Deno.exit(0);
+		}
 	};
 
 	Deno.addSignalListener('SIGINT', shutdown);
