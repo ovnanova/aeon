@@ -49,6 +49,7 @@ export const ConfigSchema = z.object({
 	SIGNING_KEY: SigningKeySchema,
 	JETSTREAM_URL: z.string().url(),
 	COLLECTION: z.string().min(1),
+	CURSOR: z.number().nonnegative().default(0),
 	CURSOR_INTERVAL: z.number().int().positive(),
 	BSKY_HANDLE: z.string().min(1),
 	BSKY_PASSWORD: z.string().min(1),

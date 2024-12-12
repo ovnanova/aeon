@@ -29,6 +29,7 @@ export const defaultConfig: z.infer<typeof ConfigSchema> = {
 	DID: 'did:plc:7iza6de2dwap2sbkpav7c6c6',
 	SIGNING_KEY: 'K8ej1iNr0qpOT5RQZzA7/nMx2+4dFgYuCVbL3PwcJaU',
 	JETSTREAM_URL: 'wss://jetstream1.us-west.bsky.network/subscribe',
+	CURSOR: 0,
 	COLLECTION: 'app.bsky.feed.like',
 	CURSOR_INTERVAL: 10000,
 	BSKY_HANDLE: 'default.handle',
