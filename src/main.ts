@@ -31,14 +31,46 @@ const kv = await Deno.openKv();
 /** Application-wide logger instance */
 const logger = log.getLogger();
 
-/** Set for tracking processed events to prevent duplicates */
-const processedEvents = new Set<string>();
+/** Interval for cleaning up expired events from the deduplication cache (1 minute) */
+const CACHE_CLEANUP_INTERVAL = 60000;
 
-/** Interval for cleaning up expired events from the deduplication cache (5 minutes) */
-const CACHE_CLEANUP_INTERVAL = 300000;
+/** Duration to retain processed events in the cache (5 minutes) */
+const EVENT_RETENTION_DURATION = 180000;
 
-/** Duration to retain processed events in the cache (1 hour) */
-const EVENT_RETENTION_DURATION = 3600000;
+/**
+ * Manages a bounded cache of processed events with automatic cleanup.
+ * Uses event IDs that contain cursor information for efficient deduplication.
+ */
+class EventCache {
+	private cache = new Set<string>();
+	private readonly maxSize = 10000;
+
+	add(eventId: string): void {
+		if (this.cache.size >= this.maxSize) {
+			const firstEntry = Array.from(this.cache)[0];
+			if (firstEntry) {
+				this.cache.delete(firstEntry);
+			}
+		}
+		this.cache.add(eventId);
+	}
+
+	has(eventId: string): boolean {
+		return this.cache.has(eventId);
+	}
+
+	cleanup(minCursor: number): void {
+		for (const eventId of this.cache) {
+			const [, , cursorStr] = eventId.split(':');
+			const cursor = parseInt(cursorStr);
+			if (cursor < minCursor) {
+				this.cache.delete(eventId);
+			}
+		}
+	}
+}
+
+const eventCache = new EventCache();
 
 /**
  * Main function orchestrating the ÆON application.
@@ -114,14 +146,9 @@ async function main() {
 
 			// Configure cache cleanup
 			setInterval(() => {
-				const now = Date.now();
-				for (const eventId of processedEvents) {
-					const [, , timeStr] = eventId.split(':');
-					const eventTime = parseInt(timeStr);
-					if (now - eventTime > EVENT_RETENTION_DURATION) {
-						processedEvents.delete(eventId);
-					}
-				}
+				const minCursor = (jetstream.cursor ?? Date.now() * 1000) -
+					EVENT_RETENTION_DURATION * 1000;
+				eventCache.cleanup(minCursor);
 			}, CACHE_CLEANUP_INTERVAL);
 
 			// Initialize and start connection management
@@ -157,12 +184,14 @@ async function main() {
  * Combines the event's DID, revision, and timestamp to create a unique string.
  *
  * @param event - The Jetstream event requiring a unique identifier
+ * @param cursor - The current cursor value for the Jetstream connection
  * @returns A unique string identifier for the event
  */
 function generateEventId(
 	event: CommitCreateEvent<string>,
+	cursor?: number,
 ): string {
-	return `${event.did}:${event.commit.rev}:${Date.now()}`;
+	return `${event.did}:${event.commit.rev}:${cursor}`;
 }
 
 /**
@@ -176,12 +205,25 @@ function setupJetstreamListeners(
 	jetstream: Jetstream<string, string>,
 	aeon: Aeon,
 ) {
+	const updateCursor = async (cursor: number | undefined) => {
+		if (cursor) {
+			await setConfigValue('CURSOR', cursor);
+			logger.debug(
+				`Updated cursor to ${cursor} (${
+					new Date(cursor / 1000).toISOString()
+				})`,
+			);
+		}
+	};
+
 	jetstream.onCreate(
 		CONFIG.COLLECTION,
 		async (event: CommitCreateEvent<typeof CONFIG.COLLECTION>) => {
 			try {
+				await updateCursor(jetstream.cursor);
+
 				const eventId = generateEventId(event);
-				if (processedEvents.has(eventId)) {
+				if (eventCache.has(eventId)) {
 					logger.debug(`Skipping duplicate create event: ${eventId}`);
 					return;
 				}
@@ -202,10 +244,6 @@ function setupJetstreamListeners(
 
 					const validatedRkey = RkeySchema.parse(rkey);
 					await aeon.handleLike(validatedDID, validatedRkey);
-
-					if (jetstream.cursor) {
-						await setConfigValue('CURSOR', jetstream.cursor);
-					}
 				}
 			} catch (error) {
 				logger.error(
@@ -273,7 +311,7 @@ function setupCursorUpdateInterval(
 					new Date(jetstream.cursor / 1000).toISOString()
 				})`,
 			);
-			await kv.set(['cursor'], jetstream.cursor);
+			await setConfigValue('CURSOR', jetstream.cursor);
 		}
 	}, CONFIG.CURSOR_INTERVAL);
 }

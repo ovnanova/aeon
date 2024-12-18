@@ -1,4 +1,4 @@
-// - Configuration management module for ÆON
+// - Configuration management module
 // - Handles initialization, retrieval, and updating of configuration
 // - Uses Deno KV for persistent storage
 // - Implements logging for configuration operations
@@ -29,8 +29,8 @@ export const defaultConfig: z.infer<typeof ConfigSchema> = {
 	DID: 'did:plc:7iza6de2dwap2sbkpav7c6c6',
 	SIGNING_KEY: 'K8ej1iNr0qpOT5RQZzA7/nMx2+4dFgYuCVbL3PwcJaU',
 	JETSTREAM_URL: 'wss://jetstream1.us-west.bsky.network/subscribe',
-	CURSOR: 0,
 	COLLECTION: 'app.bsky.feed.like',
+	CURSOR: 0,
 	CURSOR_INTERVAL: 10000,
 	BSKY_HANDLE: 'default.handle',
 	BSKY_PASSWORD: 'default_password',
@@ -110,7 +110,9 @@ export async function setConfigValue<
 	const logValue = ['SIGNING_KEY', 'BSKY_PASSWORD'].includes(key)
 		? '[REDACTED]'
 		: value;
-	logger?.info(`Config value set: ${key} = ${logValue}`);
+	if (key != 'CURSOR') {
+		logger?.info(`Config value set: ${key} = ${logValue}`);
+	}
 }
 
 /**
@@ -129,7 +131,7 @@ export async function initializeConfig(): Promise<void> {
 		await ensureDir(logDir);
 		const logFilePath = join(
 			logDir,
-			`aeon_${new Date().toISOString().split('T')[0]}.log`,
+			`${new Date().toISOString().split('T')[0]}_labeler.log`,
 		);
 
 		await log.setup({
